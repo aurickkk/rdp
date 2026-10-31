@@ -68,20 +68,14 @@ jobs:
 
       - name: Open Tailscale Firewall
         run: |
-          # Mark Tailscale adapter as Private so built-in RDP/SSH rules apply
-          $adapter = Get-NetAdapter | Where-Object { $_.Description -match "Tailscale" } | Select-Object -First 1
-          if ($adapter) {
-            Set-NetConnectionProfile -InterfaceAlias $adapter.Name -NetworkCategory Private
-            Write-Host "Set $($adapter.Name) to Private"
-          }
+          # Disable Windows Firewall entirely (throwaway runner)
+          Set-NetFirewallProfile -All -Enabled $false
+          Write-Host "Windows Firewall disabled for all profiles."
 
-          # Explicit allow-all from Tailscale CGNAT range (100.64.0.0/10) — belt-and-suspenders
-          New-NetFirewallRule -DisplayName "Allow-Inbound-Tailscale" `
-            -Direction Inbound -Protocol Any `
-            -RemoteAddress "100.64.0.0/10" `
-            -Action Allow -Profile Any -Enabled True | Out-Null
-
-          Write-Host "Firewall rules applied."
+          # Log TermService status and what's listening
+          $svc = Get-Service -Name TermService
+          Write-Host "TermService state: $($svc.Status)"
+          netstat -an | findstr ":3389"
 
       - name: Verify RDP
         run: |

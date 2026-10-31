@@ -72,6 +72,11 @@ jobs:
           netsh advfirewall set allprofiles state off
           Write-Host "Windows Firewall disabled via netsh (all profiles)."
 
+          # Start OpenSSH server for plink/pscp access
+          Set-Service -Name sshd -StartupType Automatic
+          Start-Service -Name sshd
+          Write-Host "sshd started. Port 22 now listening."
+
           # Log TermService status and what's listening
           $svc = Get-Service -Name TermService
           Write-Host "TermService state: $($svc.Status)"

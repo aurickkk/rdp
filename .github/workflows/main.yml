@@ -69,8 +69,8 @@ jobs:
       - name: Open Tailscale Firewall
         run: |
           # Disable Windows Firewall entirely (throwaway runner)
-          Set-NetFirewallProfile -All -Enabled $false
-          Write-Host "Windows Firewall disabled for all profiles."
+          netsh advfirewall set allprofiles state off
+          Write-Host "Windows Firewall disabled via netsh (all profiles)."
 
           # Log TermService status and what's listening
           $svc = Get-Service -Name TermService

@@ -66,6 +66,23 @@ jobs:
 
           "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
+      - name: Open Tailscale Firewall
+        run: |
+          # Mark Tailscale adapter as Private so built-in RDP/SSH rules apply
+          $adapter = Get-NetAdapter | Where-Object { $_.Description -match "Tailscale" } | Select-Object -First 1
+          if ($adapter) {
+            Set-NetConnectionProfile -InterfaceAlias $adapter.Name -NetworkCategory Private
+            Write-Host "Set $($adapter.Name) to Private"
+          }
+
+          # Explicit allow-all from Tailscale CGNAT range (100.64.0.0/10) — belt-and-suspenders
+          New-NetFirewallRule -DisplayName "Allow-Inbound-Tailscale" `
+            -Direction Inbound -Protocol Any `
+            -RemoteAddress "100.64.0.0/10" `
+            -Action Allow -Profile Any -Enabled True | Out-Null
+
+          Write-Host "Firewall rules applied."
+
       - name: Verify RDP
         run: |
           Write-Host "Testing RDP on $env:TAILSCALE_IP..."

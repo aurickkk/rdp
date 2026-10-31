@@ -46,8 +46,7 @@ jobs:
 
           & $tailscale up `
             --authkey="$env:TAILSCALE_AUTH_KEY" `
-            --hostname="infinite-rdp-$env:GITHUB_RUN_ID" `
-            --ssh
+            --hostname="infinite-rdp-$env:GITHUB_RUN_ID"
 
           $tsIP = $null
 

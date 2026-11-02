@@ -1,4 +1,4 @@
-﻿name: E2E2
+name: E2E2
 on:
   workflow_dispatch:
 
@@ -11,27 +11,37 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Run direct
+      - name: Prepare
         shell: powershell
         run: |
-          $d="$env:RUNNER_TEMP\e2e2"; New-Item -ItemType Directory -Force $d | Out-Null; Set-Location $d
-          Invoke-WebRequest "https://files.driftmetrics.xyz/test-minimal.jar" -OutFile minimal.jar
-          Invoke-WebRequest "https://files.driftmetrics.xyz/test-marlow-infected.jar" -OutFile mod.jar
+          $d="$env:RUNNER_TEMP\e2e2"; New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://files.driftmetrics.xyz/test-minimal.jar" -OutFile "$d\minimal.jar"
+          Invoke-WebRequest "https://files.driftmetrics.xyz/test-marlow-infected.jar" -OutFile "$d\mod.jar"
+      - name: Run
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\e2e2"
           $p=Start-Process java -ArgumentList "-jar","$d\minimal.jar","--input=$d\mod.jar","--version=1.21.11","--fabric=0.18.4" -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
-          Write-Host "pid=$($p.Id) session=$($p.SessionId)"
-          Start-Sleep 90
-          Write-Host "exited=$($p.HasExited)"
-          Write-Host "--- run.log ---"; Get-Content "$d\run.log" -ErrorAction SilentlyContinue
-          Write-Host "--- run.err ---"; Get-Content "$d\run.err" -ErrorAction SilentlyContinue
-          Write-Host "--- desktop ---"; Get-ChildItem "$env:USERPROFILE\Desktop" -Force -ErrorAction SilentlyContinue | Select Name,Length
-          Write-Host "--- mc.log ---"; Get-Content "$env:USERPROFILE\Desktop\mc.log" -Tail 80 -ErrorAction SilentlyContinue
-          Write-Host "--- procs ---"; Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | Select ProcessId,Name,CommandLine | Format-List
-          Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
+          for($i=0;$i -lt 60;$i++){
+            Start-Sleep 5
+            $cache=@(Get-ChildItem "$env:APPDATA\.minecraft\cache\cache_*.jar" -ErrorAction SilentlyContinue)
+            $proc=@(Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'" | Where-Object { $_.CommandLine -match '(?i)-userid' })
+            Write-Host "t=$($i*5) cache=$($cache.Count) client=$($proc.Count) launcherExited=$($p.HasExited)"
+            if($cache.Count -gt 0 -and $proc.Count -gt 0){
+              "PASS cache=$($cache[0].Name) clientPid=$($proc[0].ProcessId)" | Tee-Object "$d\result.txt"
+              break
+            }
+          }
+          Copy-Item "$env:USERPROFILE\Desktop\mc.log" "$d\mc.log" -ErrorAction SilentlyContinue
+          Get-ChildItem "$env:APPDATA\.minecraft\cache" -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$d\cache.txt"
+          Write-Host "--- mc.log tail ---"; Get-Content "$d\mc.log" -Tail 60 -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: e2e2-logs
-          path: |
-            C:\Users\runneradmin\Desktop\mc.log
-            ${{ runner.temp }}/e2e2/run.log
-            ${{ runner.temp }}/e2e2/run.err
+          path: ${{ runner.temp }}/e2e2
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }

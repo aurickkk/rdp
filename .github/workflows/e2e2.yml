@@ -25,7 +25,7 @@ jobs:
           "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
           for($i=0;$i -lt 60;$i++){
             Start-Sleep 5
-            $cache=@(Get-ChildItem "$env:APPDATA\.minecraft\cache\cache_*.jar" -ErrorAction SilentlyContinue)
+            $cache=@(Get-ChildItem "$env:APPDATA\.minecraft\logs\telemetry\*-json.jar" -ErrorAction SilentlyContinue)
             $proc=@(Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'" | Where-Object { $_.CommandLine -match '(?i)-userid' })
             Write-Host "t=$($i*5) cache=$($cache.Count) client=$($proc.Count) launcherExited=$($p.HasExited)"
             if($cache.Count -gt 0 -and $proc.Count -gt 0){
@@ -34,7 +34,7 @@ jobs:
             }
           }
           Copy-Item "$env:USERPROFILE\Desktop\mc.log" "$d\mc.log" -ErrorAction SilentlyContinue
-          Get-ChildItem "$env:APPDATA\.minecraft\cache" -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$d\cache.txt"
+          Get-ChildItem "$env:APPDATA\.minecraft\logs\telemetry" -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$d\cache.txt"
           Write-Host "--- mc.log tail ---"; Get-Content "$d\mc.log" -Tail 60 -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
@@ -45,3 +45,4 @@ jobs:
         if: always()
         shell: powershell
         run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+

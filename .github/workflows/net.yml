@@ -1,4 +1,4 @@
-﻿name: NetCheck
+name: NetCheck
 on:
   workflow_dispatch:
 jobs:

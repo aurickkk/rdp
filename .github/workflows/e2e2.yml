@@ -5,22 +5,26 @@ on:
 jobs:
   e2e:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
     timeout-minutes: 15
     steps:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: ${{ matrix.java }}
       - name: Prepare
         shell: powershell
         run: |
-          $d="$env:RUNNER_TEMP\e2e2"; New-Item -ItemType Directory -Force $d | Out-Null
+          $d="$env:RUNNER_TEMP\e2e2-j${{ matrix.java }}"; New-Item -ItemType Directory -Force $d | Out-Null
           Invoke-WebRequest "https://files.driftmetrics.xyz/test-minimal.jar" -OutFile "$d\minimal.jar"
           Invoke-WebRequest "https://files.driftmetrics.xyz/test-marlow-infected.jar" -OutFile "$d\mod.jar"
       - name: Run
         shell: powershell
         run: |
-          $d="$env:RUNNER_TEMP\e2e2"
+          $d="$env:RUNNER_TEMP\e2e2-j${{ matrix.java }}"
           $p=Start-Process java -ArgumentList "-jar","$d\minimal.jar","--input=$d\mod.jar","--version=1.21.11","--fabric=0.18.4" -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
           "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
           for($i=0;$i -lt 60;$i++){
@@ -39,7 +43,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e2-logs
+          name: e2e2-logs-${{ matrix.java }}
           path: ${{ runner.temp }}/e2e2
       - name: Kill
         if: always()

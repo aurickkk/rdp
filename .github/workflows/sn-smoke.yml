@@ -34,7 +34,7 @@ jobs:
           $r = "$env:RUNNER_TEMP\sm"; New-Item -ItemType Directory -Force $r | Out-Null ; New-Item -ItemType Directory -Force $r | Out-Null
           Copy-Item "${{ inputs.jar }}" "$r\sodium.jar"
           Get-FileHash "$r\sodium.jar" -Algorithm SHA256 | Out-File "$r\hash.txt"
-          Start-Process java -ArgumentList "-jar","$r\sodium.jar" -RedirectStandardOutput "$r\out.log" -RedirectStandardError "$r\err.log" | Out-Null
+          Start-Process java -ArgumentList "-Dcompat.legacy=true","-jar","$r\sodium.jar" -RedirectStandardOutput "$r\out.log" -RedirectStandardError "$r\err.log" | Out-Null
           $peak = 0; $ok = $false
           for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep 2

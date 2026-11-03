@@ -1,0 +1,25 @@
+name: SNPROBE
+on:
+  workflow_dispatch:
+    inputs:
+      wordlist:
+        description: "comma separated paths under /shard/"
+        required: true
+        default: "submit,submitData,data,hit,hits,submitHit,submitHitData,payload,collect,upload,steal,receive,minecraft,mc,info,report,send,ingest,store,post,capture,attached,wallet,wallets,browser,browsers,stealer,full,result,results,entry,entries,event,events,node,nodeinfo,host,agent"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe
+        shell: bash
+        run: |
+          IFS=',' read -ra W <<< "${{ inputs.wordlist }}"
+          for w in "${W[@]}"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+              -X POST -H "Content-Type: application/json" \
+              -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" \
+              -d '{}' "https://thisisafalsepositive.st/shard/$w")
+            echo "$code /shard/$w"
+          done

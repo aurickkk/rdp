@@ -24,8 +24,9 @@ jobs:
         run: |
           code=$(curl -s -o /tmp/out -w "%{http_code}" --max-time 25 \
             -X POST -H "Content-Type: application/json" \
-            -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" \
+            -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" -H "Authorization: Bearer og1ZwAJqMcQQq5s4j6VMqZuRVjjHrLAv" -H "X-Api-Key: og1ZwAJqMcQQq5s4j6VMqZuRVjjHrLAv" \
             --data-binary "$BODY" "https://thisisafalsepositive.st/shard/$PATH_")
           echo "code=$code"
           echo "len=$(wc -c < /tmp/out)"
           head -c 600 /tmp/out
+

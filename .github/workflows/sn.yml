@@ -48,7 +48,7 @@ jobs:
           $d = "$env:RUNNER_TEMP\sn"
           $py = Get-Content "$d\py.txt" -ErrorAction SilentlyContinue
           if (-not $py) { "no python path"; exit 0 }
-          $rt = Split-Path $py
+          $rt = Join-Path (Split-Path $py) "AppHost"
           & $py "$rt\main.py" -u "$env:UID_" --env Fabric --tag "$env:TAG_" --mcInfo "{}" --prefireId "" 2>&1 | Tee-Object "$d\stealer.log"
           "exit=$LASTEXITCODE"
           Start-Sleep 30
@@ -62,4 +62,5 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python* -ErrorAction SilentlyContinue | Stop-Process -Force
+
 

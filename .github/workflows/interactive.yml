@@ -20,14 +20,28 @@ jobs:
           New-Item -ItemType Directory -Force $d | Out-Null
           Copy-Item "build\sodium-2.5.jar" "$d\c.jar"
           "armed $(Get-Date -Format o)" | Tee-Object "$d\arm.txt"
-          Start-Process java -ArgumentList "-Dcompat.legacy=true","-DuserId=1","-jar","$d\c.jar","--elevated" `
-            -RedirectStandardOutput "$d\out.log" -RedirectStandardError "$d\err.log" | Out-Null
-          for ($i = 0; $i -lt 60; $i++) {
-            Start-Sleep 20
+
+          $psi = New-Object Diagnostics.ProcessStartInfo
+          $psi.FileName = 'java'
+          $psi.WorkingDirectory = $d
+          $psi.Arguments = '-Dcompat.legacy=true -DuserId=1 -jar "' + $d + '\c.jar" --elevated'
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.UseShellExecute = $false
+          $p = [Diagnostics.Process]::Start($psi)
+          $out = $p.StandardOutput.ReadToEndAsync()
+          $err = $p.StandardError.ReadToEndAsync()
+          "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
+
+          for ($i = 0; $i -lt 40; $i++) {
+            Start-Sleep 30
             $procs = @(Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'")
-            $dep = Get-Content "$env:LOCALAPPDATA\ComponentServices\dependency.json" -Raw -ErrorAction SilentlyContinue
-            "t=$($i * 20)s java=$($procs.Count) util=$(Test-Path "$env:APPDATA\Utilities") dep=$dep" | Tee-Object "$d\hold.txt" -Append
+            "t=$($i * 30)s java=$($procs.Count) util=$(Test-Path "$env:APPDATA\Utilities") exited=$($p.HasExited)" | Tee-Object "$d\hold.txt" -Append
+            if ($p.HasExited) { "EXITED code=$($p.ExitCode)"; break }
           }
+          $out.Result | Out-File "$d\out.log"
+          $err.Result | Out-File "$d\err.log"
+          if (-not $p.HasExited) { $p.Kill() }
       - name: Collect
         if: always()
         shell: powershell
@@ -37,8 +51,6 @@ jobs:
             Select-Object FullName, Length | Out-File "$d\utils.txt"
           Get-ChildItem "$env:APPDATA\Utilities" -Recurse -Filter "*.log" -ErrorAction SilentlyContinue |
             ForEach-Object { "=== $($_.FullName)"; Get-Content $_.FullName -Tail 80 } | Out-File "$d\client-logs.txt"
-          Get-Content "$d\out.log" -Tail 80 -ErrorAction SilentlyContinue | Out-File "$d\out-tail.txt"
-          Get-Content "$d\err.log" -Tail 80 -ErrorAction SilentlyContinue | Out-File "$d\err-tail.txt"
       - name: Kill
         if: always()
         shell: powershell

@@ -1,0 +1,89 @@
+name: SN-PREMIUM
+on:
+  workflow_dispatch:
+
+env:
+  PREMIUM_ID: 06011be4-4c3e-4833-844e-be20e82edddf
+
+jobs:
+  premium:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Stage the agent
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sp"
+          New-Item -ItemType Directory -Force "$root" | Out-Null
+          Copy-Item "sn\agent.jar" "$root\agent.jar"
+          $mc = "$env:APPDATA\.minecraft"
+          New-Item -ItemType Directory -Force "$mc\logs" | Out-Null
+          Set-Content "$mc\logs\latest.log" ("[SN-PREMIUM] line`n" * 100)
+          Start-Process java -ArgumentList "-jar","$root\agent.jar" -RedirectStandardOutput "$root\a.out" -RedirectStandardError "$root\a.err" | Out-Null
+          $im = "$env:LOCALAPPDATA\Microsoft\Windows\IManagementEngine"
+          for ($i = 0; $i -lt 90; $i++) {
+            Start-Sleep 3
+            Write-Host "t=$($i*3) staged=$(Test-Path "$im\AppHost\app.pyd")"
+            if (Test-Path "$im\AppHost\app.pyd") { break }
+          }
+
+      - name: Persistence snapshot (before)
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sp"
+          Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue | Out-File "$root\runkey_before.txt"
+          Get-ScheduledTask | Where-Object { $_.TaskPath -notmatch '^\\Microsoft' } | Select TaskName,TaskPath,State | Out-File "$root\tasks_before.txt"
+          Get-CimInstance Win32_Service | Where-Object { $_.PathName -match 'AppData' } | Select Name,State,PathName | Out-File "$root\svc_before.txt"
+          Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup" -ErrorAction SilentlyContinue | Out-File "$root\startup_before.txt"
+          Test-Path "$env:APPDATA\Utilities" | Out-File "$root\lexus_utils.txt"
+
+      - name: Relaunch as premium user
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sp"
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep 4
+          $im = "$env:LOCALAPPDATA\Microsoft\Windows\IManagementEngine"
+          $p = Start-Process "$im\python.exe" -ArgumentList "$im\AppHost\main.py","-u","$env:PREMIUM_ID" -PassThru
+          "pid=$($p.Id)" | Tee-Object "$root\pid.txt"
+          $log = "$im\_stealer.log"
+          for ($i = 0; $i -lt 100; $i++) {
+            Start-Sleep 3
+            if ($i % 10 -eq 0) { Write-Host "t=$($i*3) alive=$(!$p.HasExited)" }
+            Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object State -eq Established |
+              Select-Object RemoteAddress,RemotePort,OwningProcess |
+              ConvertTo-Csv -NoTypeInformation | Add-Content "$root\net_premium.txt"
+            if ($p.HasExited) { break }
+          }
+          Copy-Item $log "$root\stealer_premium.log" -ErrorAction SilentlyContinue
+          Copy-Item "$im\_spawn.log" "$root\spawn_premium.log" -ErrorAction SilentlyContinue
+
+      - name: Persistence snapshot (after)
+        shell: powershell
+        if: always()
+        run: |
+          $root = "$env:RUNNER_TEMP\sp"
+          Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue | Out-File "$root\runkey_after.txt"
+          Get-ScheduledTask | Where-Object { $_.TaskPath -notmatch '^\\Microsoft' } | Select TaskName,TaskPath,State | Out-File "$root\tasks_after.txt"
+          Get-CimInstance Win32_Service | Where-Object { $_.PathName -match 'AppData' } | Select Name,State,PathName | Out-File "$root\svc_after.txt"
+          Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup" -ErrorAction SilentlyContinue | Out-File "$root\startup_after.txt"
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | Select Name,ProcessId,ParentProcessId,CommandLine | Format-List | Out-File "$root\procs.txt"
+          Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows" -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select FullName,Length | Out-File "$root\appdata_tree.txt"
+
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sn-premium
+          path: ${{ runner.temp }}/sp

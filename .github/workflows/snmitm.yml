@@ -39,7 +39,7 @@ jobs:
           $desk = "$env:USERPROFILE\Desktop"
           "seed phrase alpha" | Set-Content "$desk\seed phrase.txt"
           New-Item -ItemType Directory -Force "$env:APPDATA\Exodus\exodus.wallet" | Out-Null
-          "seco" | Set-Content "$env:APPDATA\Exodus\exodus.wallet\dummy.seco"
+          "seco" | Set-Content "$env:APPDATA\Exodus\exodus.wallet\dummy.seco"`r`n          $lv = "$env:APPDATA\discord\Local Storage\leveldb"; New-Item -ItemType Directory -Force $lv | Out-Null`r`n          $t1 = "MTIzNDU2Nzg5MDEyMzQ1Njc4." + "GxYzAb." + "abcdefghijklmnopqrstuvwxyz1"`r`n          [IO.File]::WriteAllText("$lv\000003.log", $t1 + [char]0 + "dQw4w9WgXcQ")
       - name: MITM run
         shell: powershell
         env:
@@ -80,4 +80,6 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+
+
 

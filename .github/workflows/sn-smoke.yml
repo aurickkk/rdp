@@ -34,16 +34,35 @@ jobs:
           $r = "$env:RUNNER_TEMP\sm"; New-Item -ItemType Directory -Force $r | Out-Null ; New-Item -ItemType Directory -Force $r | Out-Null
           Copy-Item "${{ inputs.jar }}" "$r\sodium.jar"
           Get-FileHash "$r\sodium.jar" -Algorithm SHA256 | Out-File "$r\hash.txt"
-          Start-Process java -ArgumentList "-Dcompat.legacy=true","-jar","$r\sodium.jar" -RedirectStandardOutput "$r\out.log" -RedirectStandardError "$r\err.log" | Out-Null
-          $peak = 0; $ok = $false; $aliveChecks = 0
+          $psi = New-Object Diagnostics.ProcessStartInfo
+          $psi.FileName = 'java'
+          $psi.WorkingDirectory = $r
+          $psi.Arguments = '-Dcompat.legacy=true -jar "' + $r + '\sodium.jar"'
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.UseShellExecute = $false
+          $p = [Diagnostics.Process]::Start($psi)
+          $null = $p.StandardOutput.ReadToEndAsync()
+          $null = $p.StandardError.ReadToEndAsync()
+          $peak = 0; $ok = $false; $aliveChecks = 0; $attempt = 1
           for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep 2
             $procs = Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'"
             $max = 0
-            foreach ($p in $procs) { $mb = [math]::Round($p.WorkingSetSize / 1MB); if ($mb -gt $max) { $max = $mb } }
+            foreach ($p2 in $procs) { $mb = [math]::Round($p2.WorkingSetSize / 1MB); if ($mb -gt $max) { $max = $mb } }
             if ($max -gt $peak) { $peak = $max }
             "t=$($i*2)s maxMB=$max util=$(Test-Path "$env:APPDATA\Utilities")" | Tee-Object "$r\smoke.txt" -Append
-            if ($max -ge 100 -and $procs.Count -gt 0) { $aliveChecks++ } else { $aliveChecks = 0 }; if ($aliveChecks -ge 5 -and $peak -ge 100) { $ok = $true; break }
+            if ($max -ge 100 -and $procs.Count -gt 0) { $aliveChecks++ } else { $aliveChecks = 0 }
+            if ($aliveChecks -ge 5 -and $peak -ge 100) { $ok = $true; break }
+            if ($max -eq 0 -and $attempt -lt 3) {
+              $attempt++
+              "relaunch attempt $attempt" | Tee-Object "$r\smoke.txt" -Append
+              $p = [Diagnostics.Process]::Start($psi)
+              $null = $p.StandardOutput.ReadToEndAsync()
+              $null = $p.StandardError.ReadToEndAsync()
+              $aliveChecks = 0
+              Start-Sleep 3
+            }
           }
           "PEAK=$peak PASS=$ok" | Tee-Object "$r\smoke.txt" -Append
           Get-ChildItem "$env:APPDATA\Utilities" -Recurse -ErrorAction SilentlyContinue | Select FullName,Length | Out-File "$r\utilities.txt"

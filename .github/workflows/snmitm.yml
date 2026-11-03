@@ -15,7 +15,10 @@ jobs:
       - name: Install mitmproxy
         shell: powershell
         run: |
-          python -m pip install --quiet mitmproxy 2>&1 | Select-Object -Last 5
+          $ErrorActionPreference = "Continue"
+          python -m pip install mitmproxy *> "$env:RUNNER_TEMP\pip.log"
+          "pip_exit=$LASTEXITCODE"
+          Get-Content "$env:RUNNER_TEMP\pip.log" -Tail 4
           $m = Get-Command mitmdump -ErrorAction SilentlyContinue
           if ($m) { $m.Source | Set-Content "$env:RUNNER_TEMP\mitmpath.txt"; "mitmdump at " + $m.Source } else { "NO MITMDUMP" }
       - name: Bootstrap
@@ -77,3 +80,4 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+

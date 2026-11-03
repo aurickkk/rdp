@@ -30,7 +30,7 @@ jobs:
           "exe=$((Get-Item $exe).Length)"
           $challenge = New-Object byte[] 32
           (New-Object Random).NextBytes($challenge)
-          $p = Start-Process $exe -RedirectStandardOutput "$d\o.txt" -RedirectStandardError "$d\e.txt" -PassThru
+          try { $p = Start-Process -FilePath $exe -RedirectStandardOutput "$d\o.txt" -RedirectStandardError "$d\e.txt" -PassThru } catch { "START-ERR $_" | Tee-Object "$d\start.txt"; exit 0 }
           Start-Sleep 1
           $p.StandardInput.BaseStream.Write($challenge,0,32); $p.StandardInput.Close()
           $p.WaitForExit(5000) | Out-Null

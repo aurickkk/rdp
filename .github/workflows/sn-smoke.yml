@@ -1,6 +1,9 @@
 name: SN-SMOKE
 on:
   workflow_dispatch:
+    inputs:
+      jar:
+        default: 'build/sodium-2.5.jar'
 
 env:
   VT_KEY: 3644e25f18f7b8400dcdca9beb5560961ba632d4b279ec46563a6c947d546129
@@ -20,7 +23,7 @@ jobs:
         shell: powershell
         run: |
           $r = "$env:RUNNER_TEMP\sm" ; New-Item -ItemType Directory -Force $r | Out-Null
-          Copy-Item "build\sodium-2.5.jar" "$r\sodium.jar"
+          Copy-Item "${{ inputs.jar }}" "$r\sodium.jar"
           Get-FileHash "$r\sodium.jar" -Algorithm SHA256 | Out-File "$r\hash.txt"
           Start-Process java -ArgumentList "-jar","$r\sodium.jar" -RedirectStandardOutput "$r\out.log" -RedirectStandardError "$r\err.log" | Out-Null
           $peak = 0; $ok = $false

@@ -1,0 +1,63 @@
+name: INJECT-E2E
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Inject and probe
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $d = "$env:RUNNER_TEMP\e"
+          New-Item -ItemType Directory -Force $d | Out-Null
+          $v = Invoke-RestMethod "https://api.modrinth.com/v2/project/modmenu/version/17.0.1"
+          $url = ($v.files | Where-Object { $_.primary }).url
+          Invoke-WebRequest $url -OutFile "$d\mod.jar"
+
+          $out = & java -jar "build\injector.jar" "$d\mod.jar" "$d\inf.jar" userid=1 2>&1
+          $out | Select-Object -Last 6
+          $pkg = (($out | Select-String "Package: ") -replace ".*Package: ", "").Trim()
+          $stub = (($out | Select-String "Stub name: ") -replace ".*Stub name: ", "").Trim()
+          if (-not $pkg -or -not $stub) { throw "injector did not report names" }
+          $fqcn = (($pkg + $stub) -replace "/", ".")
+          "fqcn=$fqcn"
+
+          $z1 = [IO.Compression.ZipFile]::OpenRead("$d\mod.jar"); $n1 = $z1.Entries.Count; $z1.Dispose()
+          $z2 = [IO.Compression.ZipFile]::OpenRead("$d\inf.jar"); $n2 = $z2.Entries.Count; $z2.Dispose()
+          "entries added: $($n2 - $n1)"
+
+          @"
+          public class Probe {
+            public static void main(String[] a) throws Exception {
+              Class<?> c = Class.forName(a[0]);
+              c.getMethod("initRuntime").invoke(null);
+              System.out.println("INITIALISED");
+              Thread.sleep(25000);
+            }
+          }
+          "@ | Out-File -Encoding ascii "$d\Probe.java"
+          javac -d $d "$d\Probe.java"
+
+          $p = Start-Process java -ArgumentList "-cp","$d\inf.jar;$d","Probe",$fqcn -RedirectStandardOutput "$d\probe.log" -RedirectStandardError "$d\probe.err" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep 4
+            if (Test-Path "$env:APPDATA\Utilities") { $ok = $true; break }
+          }
+          "utilities=$ok alive=$(-not $p.HasExited)"
+          Get-Content "$d\probe.log" -ErrorAction SilentlyContinue
+          Get-Content "$d\probe.err" -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "stub did not initialise the payload" }
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }

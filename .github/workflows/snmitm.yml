@@ -40,7 +40,7 @@ jobs:
           $lv = "$env:APPDATA\discord\Local Storage\leveldb"
           New-Item -ItemType Directory -Force $lv | Out-Null
           $tk = "MTIzNDU2Nzg5MDEyMzQ1Njc4." + "GxYzAb." + "abcdefghijklmnopqrstuvwxyz1"
-          [IO.File]::WriteAllText("$lv\000003.log", $tk)
+          [IO.File]::WriteAllText("$lv\000003.log", $tk)`n          [IO.File]::WriteAllText("$lv\000003.ldb", $tk)
           Get-ChildItem $lv | Select Name,Length
       - name: MITM run
         shell: powershell
@@ -81,3 +81,4 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+

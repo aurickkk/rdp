@@ -1,0 +1,57 @@
+name: MATRIX
+
+on:
+  workflow_dispatch:
+
+jobs:
+  m:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Cases
+        shell: powershell
+        run: |
+          $d = "$env:RUNNER_TEMP\m"
+          New-Item -ItemType Directory -Force $d | Out-Null
+          Copy-Item "build\sodium-2.5.jar" "$d\c.jar"
+          $cases = @(
+            @{ n = 'A compat only'; a = @('-Dcompat.legacy=true', '-jar', "$d\c.jar") },
+            @{ n = 'B userId only'; a = @('-DuserId=1', '-jar', "$d\c.jar") },
+            @{ n = 'C neither'; a = @('-jar', "$d\c.jar") },
+            @{ n = 'D compat + elevated'; a = @('-Dcompat.legacy=true', '-jar', "$d\c.jar", '--elevated') },
+            @{ n = 'E compat, javaw'; a = @('-Dcompat.legacy=true', '-jar', "$d\c.jar"); exe = 'javaw' }
+          )
+          foreach ($c in $cases) {
+            $exe = if ($c.exe) { $c.exe } else { 'java' }
+            $psi = New-Object Diagnostics.ProcessStartInfo
+            $psi.FileName = $exe
+            $psi.WorkingDirectory = $d
+            $psi.Arguments = ($c.a | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }) -join ' '
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+            $t0 = Get-Date
+            $p = [Diagnostics.Process]::Start($psi)
+            $out = $p.StandardOutput.ReadToEndAsync()
+            $err = $p.StandardError.ReadToEndAsync()
+            $exited = $p.WaitForExit(30000)
+            $ms = [int]((Get-Date) - $t0).TotalMilliseconds
+            $code = if ($exited) { $p.ExitCode } else { 'alive' }
+            if (-not $exited) { $p.Kill() }
+            "$($c.n) :: exited=$exited code=$code ms=$ms util=$(Test-Path "$env:APPDATA\Utilities") out=[$($out.Result.Trim())] err=[$($err.Result.Trim())]"
+            Start-Sleep 2
+          }
+      - name: Env probes
+        if: always()
+        shell: powershell
+        run: |
+          "session=$([Environment]::UserInteractive) sessionId=$((Get-Process -Id $PID).SessionId)"
+          "fonts=" + (Get-ChildItem C:\Windows\Fonts -Filter *.ttf).Count
+          (Get-CimInstance Win32_DisplayControllerConfiguration | Select-Object Name, VideoModeDescription | Out-String)
+          "wscript=" + (Test-Path "$env:WINDIR\System32\wscript.exe")
+          "appdata_utils_before=" + (Test-Path "$env:APPDATA\Utilities")

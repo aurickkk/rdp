@@ -89,6 +89,21 @@ jobs:
           Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } |
             Select-Object Name,ProcessId,ParentProcessId,CommandLine | Format-List | Out-File "$root\procs.txt"
 
+      - name: Live payload hash and parse
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $root = "$env:RUNNER_TEMP\sn"
+          try {
+            Invoke-WebRequest "https://thisisafalsepositive.st/cdn/v2/9f4e7a2c1b8d.png" -OutFile "$root\live.png" -TimeoutSec 120
+            Get-FileHash "$root\live.png" -Algorithm SHA256 | Out-File "$root\static\live_png_hash.txt"
+            python "sn\parse_png.py" "$root\live.png" $root | Out-File "$root\static\live_png_parse.txt"
+          } catch { "png fetch failed: $_" | Out-File "$root\static\live_png_parse.txt" }
+          $im = "$env:LOCALAPPDATA\Microsoft\Windows\IManagementEngine\AppHost"
+          Get-ChildItem $im -ErrorAction SilentlyContinue | Select-Object Name,Length | Out-File "$root\static\staged.txt"
+          Get-FileHash "$im\app.pyd" -Algorithm SHA256 -ErrorAction SilentlyContinue | Out-File "$root\static\staged_pyd_hash.txt"
+          Get-FileHash "$im\main.py" -Algorithm SHA256 -ErrorAction SilentlyContinue | Out-File "$root\static\staged_main_hash.txt"
+
       - name: Payload capture and PNG parse
         shell: powershell
         if: always()

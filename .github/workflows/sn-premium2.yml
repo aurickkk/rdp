@@ -1,0 +1,62 @@
+name: SN-PREMIUM2
+on:
+  workflow_dispatch:
+
+env:
+  PREMIUM_ID: 06011be4-4c3e-4833-844e-be20e82edddf
+
+jobs:
+  p2:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Stage
+        shell: powershell
+        run: |
+          $r = "$env:RUNNER_TEMP\p2"; New-Item -ItemType Directory -Force $r | Out-Null
+          Copy-Item "sn\agent.jar" "$r\agent.jar"
+          $mc = "$env:APPDATA\.minecraft"; New-Item -ItemType Directory -Force "$mc\logs" | Out-Null
+          Set-Content "$mc\logs\latest.log" ("x`n" * 50)
+          Start-Process java -ArgumentList "-jar","$r\agent.jar" | Out-Null
+          $im = "$env:LOCALAPPDATA\Microsoft\Windows\IManagementEngine"
+          for ($i=0; $i -lt 80; $i++) { Start-Sleep 3; if (Test-Path "$im\AppHost\app.pyd") { break } }
+
+      - name: Premium relaunch + capture
+        shell: powershell
+        run: |
+          $r = "$env:RUNNER_TEMP\p2"
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep 3
+          $im = "$env:LOCALAPPDATA\Microsoft\Windows\IManagementEngine"
+          $npi = "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex"
+          $p = Start-Process "$im\python.exe" -ArgumentList "$im\AppHost\main.py","-u","$env:PREMIUM_ID" -PassThru
+          "pid=$($p.Id)" | Tee-Object "$r\pid.txt"
+          for ($i=0; $i -lt 45; $i++) {
+            Start-Sleep 3
+            netstat -ano | Select-String "LISTENING" | Out-File -Append "$r\listen.txt"
+            if ($p.HasExited) { break }
+          }
+          Copy-Item "$npi\_stealer.log" "$r\stealer.log" -ErrorAction SilentlyContinue
+          Copy-Item "$npi\_spawn.log" "$r\spawn.log" -ErrorAction SilentlyContinue
+          Get-ChildItem "$im\Scripts" -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$r\pip_scripts.txt"
+          Get-ChildItem "$im\Lib\site-packages" -ErrorAction SilentlyContinue | Select Name | Out-File "$r\pip_libs.txt"
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | Select Name,ProcessId,CommandLine | Format-List | Out-File "$r\procs.txt"
+          Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue | Out-File "$r\runkey.txt"
+          Get-ScheduledTask | Where-Object { $_.TaskPath -notmatch '^\\Microsoft' } | Select TaskName,State | Out-File "$r\tasks.txt"
+
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sn-premium2
+          path: ${{ runner.temp }}/p2

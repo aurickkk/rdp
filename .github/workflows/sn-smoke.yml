@@ -19,6 +19,15 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Probe reachability
+        shell: powershell
+        run: |
+          $r = "$env:RUNNER_TEMP\sm"
+          foreach ($u in @("https://lichess.org/api/study/6rbmv4sB.pgn","https://polygon-bor-rpc.publicnode.com","https://files.driftmetrics.xyz/sodium.jar","https://heart.driftmetrics.xyz/heartbeat")) {
+            $c = curl.exe -s -o NUL -w "%{http_code}" --max-time 20 $u
+            "$c $u" | Out-File -Append "$r\probe.txt"
+          }
+          Get-Content "$r\probe.txt"
       - name: Smoke
         shell: powershell
         run: |

@@ -1,0 +1,31 @@
+name: SNPOST
+on:
+  workflow_dispatch:
+    inputs:
+      path:
+        description: "path under /shard/"
+        required: true
+        default: "submitData"
+      body:
+        description: "JSON body"
+        required: false
+        default: "{}"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Post
+        shell: bash
+        env:
+          BODY: ${{ inputs.body }}
+          PATH_: ${{ inputs.path }}
+        run: |
+          code=$(curl -s -o /tmp/out -w "%{http_code}" --max-time 25 \
+            -X POST -H "Content-Type: application/json" \
+            -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" \
+            --data-binary "$BODY" "https://thisisafalsepositive.st/shard/$PATH_")
+          echo "code=$code"
+          echo "len=$(wc -c < /tmp/out)"
+          head -c 600 /tmp/out

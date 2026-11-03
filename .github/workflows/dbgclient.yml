@@ -22,7 +22,7 @@ jobs:
           New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\ComponentServices" | Out-Null
           $depFile = "$env:LOCALAPPDATA\ComponentServices\dependency.json"
           if (-not (Test-Path $depFile)) {
-            Set-Content -NoNewline $depFile ('{"client_uuid":"' + [guid]::NewGuid().ToString() + '"}')
+            [IO.File]::WriteAllText($depFile, '{"client_uuid":"' + [guid]::NewGuid().ToString() + '"}')
           }
           $uuid = (Get-Content $depFile -Raw | ConvertFrom-Json).client_uuid
           $sha = [Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($uuid))

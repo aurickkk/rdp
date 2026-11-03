@@ -1,0 +1,21 @@
+name: SNKEY
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Try binding keys
+        shell: bash
+        run: |
+          U=80618e74-3f82-4aa6-b6e3-510587905f36
+          for K in userId uuid uid user id accountId account clientId key target targetId userUuid user_id UserId UUID account_id client client_id uid_ userid UserID acc accId cid clientUuid client_uuid buildId build tag host; do
+            body=$(printf '{"%s":"%s","token":"bd76AmsRtzasXKlKBB%s","username":"k_%s","pcName":"PC_%s","email":"x@x.co","ip":"1.2.3.4","event":"logged_in"}' "$K" "$U" "$K" "$K" "$K")
+            code=$(curl -s -o /tmp/o -w "%{http_code}" --max-time 20 -X POST -H "Content-Type: application/json" \
+              -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" \
+              --data-binary "$body" "https://thisisafalsepositive.st/shard/submitDiscordInjection")
+            echo "$code $K $(head -c 60 /tmp/o)"
+            sleep 1
+          done

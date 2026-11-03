@@ -89,7 +89,7 @@ jobs:
           }
           Get-ChildItem $jar -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$d\j17-jars.txt"
           if (-not $ok) { throw 'Java 17 chain produced no jar/client' }
-          Start-Sleep 45
+          Start-Sleep 150
           Get-Content "$d\run.out","$d\run.err" -ErrorAction SilentlyContinue | Select-Object -Last 20
       - name: Prepare
         if: matrix.java == '21'
@@ -124,7 +124,7 @@ jobs:
           Write-Host "--- run.err ---"; Get-Content "$d\run.err" -Tail 40 -ErrorAction SilentlyContinue
           Write-Host "--- mc.log tail ---"; Get-Content "$d\mc.log" -Tail 60 -ErrorAction SilentlyContinue
           if (-not $ok) { throw 'no cache jar / client process detected' }
-          Start-Sleep 45
+          Start-Sleep 150
           Write-Host '--- mc.log after grace ---'; Get-Content "$d\mc.log" -Tail 20 -ErrorAction SilentlyContinue
 
       - uses: actions/upload-artifact@v4

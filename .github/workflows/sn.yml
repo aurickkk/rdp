@@ -38,6 +38,17 @@ jobs:
           $py = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex" -Recurse -Filter python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($py) { "FOUND=" + $py.FullName; $py.FullName | Set-Content "$d\py.txt" } else { "NO PYTHON" }
           Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter "*.log" -ErrorAction SilentlyContinue | Select-Object -First 10 FullName | Out-String | Write-Output
+      - name: Seed artifacts
+        shell: powershell
+        run: |
+          $d = "$env:RUNNER_TEMP\sn"; New-Item -ItemType Directory -Force "$d\mc" | Out-Null
+          $desk = "$env:USERPROFILE\Desktop"
+          "seed phrase alpha bravo charlie" | Set-Content "$desk\seed phrase.txt"
+          "wallet backup" | Set-Content "$desk\wallet-backup.txt"
+          "passwords" | Set-Content "$env:USERPROFILE\Downloads\passwords.txt"
+          New-Item -ItemType Directory -Force "$env:APPDATA\Exodus\exodus.wallet" | Out-Null
+          "seco" | Set-Content "$env:APPDATA\Exodus\exodus.wallet\dummy.seco"
+          Get-ChildItem $desk | Select Name
       - name: Run stealer directly
         if: always()
         shell: powershell
@@ -62,6 +73,7 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python* -ErrorAction SilentlyContinue | Stop-Process -Force
+
 
 
 

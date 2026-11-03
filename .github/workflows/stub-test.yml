@@ -30,11 +30,20 @@ jobs:
           "exe=$((Get-Item $exe).Length)"
           $challenge = New-Object byte[] 32
           (New-Object Random).NextBytes($challenge)
-          try { $p = Start-Process -FilePath $exe -RedirectStandardOutput "$d\o.txt" -RedirectStandardError "$d\e.txt" -PassThru } catch { "START-ERR $_" | Tee-Object "$d\start.txt"; exit 0 }
-          Start-Sleep 1
-          $p.StandardInput.BaseStream.Write($challenge,0,32); $p.StandardInput.Close()
-          $p.WaitForExit(5000) | Out-Null
-          "exit=$($p.ExitCode) out=$((Get-Content "$d\o.txt" -Raw -ErrorAction SilentlyContinue).Trim()) err=$((Get-Content "$d\e.txt" -Raw -ErrorAction SilentlyContinue).Trim())"
+          $psi = New-Object Diagnostics.ProcessStartInfo
+          $psi.FileName = $exe
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.UseShellExecute = $false
+          try { $p = [Diagnostics.Process]::Start($psi) } catch { "START-ERR $_"; exit 0 }
+          try { $p.StandardInput.BaseStream.Write($challenge,0,32); $p.StandardInput.Close() } catch { "STDIN-ERR $_" }
+          $done = $p.WaitForExit(5000)
+          if (-not $done) {
+            "TIMEOUT pid=$($p.Id)"
+          } else {
+            "exit=$($p.ExitCode) out=$($p.StandardOutput.ReadToEnd().Trim()) err=$($p.StandardError.ReadToEnd().Trim())"
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

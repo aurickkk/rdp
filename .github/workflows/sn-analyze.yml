@@ -1,0 +1,124 @@
+name: SN-ANALYZE
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Layout + static inventory
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sn"
+          New-Item -ItemType Directory -Force "$root\static" | Out-Null
+          Copy-Item "sn\agent.jar" "$root\agent.jar"
+          Get-FileHash "$root\agent.jar" -Algorithm SHA256 | Format-List | Out-File "$root\static\hash.txt"
+          (Get-Item "$root\agent.jar").Length | Out-File "$root\static\size.txt"
+          Expand-Archive -LiteralPath "$root\agent.jar" -DestinationPath "$root\unz" -Force
+          Get-ChildItem "$root\unz" -Recurse -File | Select FullName,Length | Out-File "$root\static\files.txt"
+          Get-Content "$root\unz\fabric.mod.json" -ErrorAction SilentlyContinue | Out-File "$root\static\fabric.mod.json"
+          Get-Content "$root\unz\META-INF\MANIFEST.MF" -ErrorAction SilentlyContinue | Out-File "$root\static\MANIFEST.MF"
+
+      - name: Decompile + string sweep
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sn"
+          Invoke-WebRequest "https://repo1.maven.org/maven2/org/benf/cfr/0.152/cfr-0.152.jar" -OutFile "$root\cfr.jar"
+          java -jar "$root\cfr.jar" "$root\unz" --outputdir "$root\src" --silent true | Out-Null
+          Get-ChildItem "$root\src" -Recurse -File | Select FullName,Length | Out-File "$root\static\decompiled.txt"
+          # readable strings from every class
+          $enc = [Text.Encoding]::GetEncoding(28591)
+          $out = New-Object System.Text.StringBuilder
+          Get-ChildItem "$root\unz" -Recurse -Filter *.class | ForEach-Object {
+            $s = $enc.GetString([IO.File]::ReadAllBytes($_.FullName))
+            [regex]::Matches($s, '[\x20-\x7E]{5,}') | ForEach-Object { [void]$out.AppendLine($_.Value) }
+          }
+          $out.ToString() | Out-File "$root\static\raw_strings.txt"
+          Select-String -LiteralPath "$root\src" -Pattern "shard|/cdn|https?://|prefire|submit" -AllMatches |
+            ForEach-Object { $_.Filename + ":" + $_.LineNumber + ":" + $_.Line.Trim() } |
+            Out-File "$root\static\endpoints.txt"
+
+      - name: Fake game dir + network recorder
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sn"
+          $mc = "$env:APPDATA\.minecraft"
+          New-Item -ItemType Directory -Force "$mc\logs","$mc\mods" | Out-Null
+          Set-Content "$mc\options.txt" "version:1.21.11"
+          Set-Content "$mc\logs\latest.log" ("[SN-ANALYZE] synthetic log line`n" * 200)
+          # background recorder
+          Start-Process powershell -ArgumentList @(
+            '-NoProfile','-Command',
+            "`$o='$root\net.log'; for(`$i=0;`$i -lt 400;`$i++){ Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object State -eq Established | Select-Object RemoteAddress,RemotePort,OwningProcess | ConvertTo-Csv -NoTypeInformation | Add-Content `$o; ipconfig /displaydns | Select-String 'Record Name' | Add-Content `$o; Start-Sleep 1 }"
+          ) | Out-Null
+
+      - name: Run agent
+        shell: powershell
+        run: |
+          $root = "$env:RUNNER_TEMP\sn"
+          $p = Start-Process java -ArgumentList "-jar","$root\agent.jar" -RedirectStandardOutput "$root\run.out" -RedirectStandardError "$root\run.err" -PassThru
+          "pid=$($p.Id)" | Tee-Object "$root\pid.txt"
+          for ($i=0; $i -lt 60; $i++) {
+            Start-Sleep 3
+            $py = @(Get-Process python,pythonw -ErrorAction SilentlyContinue)
+            $dir = "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex"
+            Write-Host "t=$($i*3) python=$($py.Count) dir=$([bool](Test-Path $dir))"
+            if ($py.Count -gt 0 -and (Test-Path "$dir\AppHost\app.pyd")) { break }
+          }
+          Start-Sleep 45
+          Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex" -Recurse -ErrorAction SilentlyContinue |
+            Select FullName,Length | Out-File "$root\npi_tree.txt"
+          Get-Content "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex\_spawn.log" -ErrorAction SilentlyContinue | Out-File "$root\spawn.log"
+          Get-Content "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex\_stealer.log" -ErrorAction SilentlyContinue | Out-File "$root\stealer.log"
+          Get-Content "$env:TEMP\svchost_d.log" -ErrorAction SilentlyContinue | Out-File "$root\svchost_d.log"
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } |
+            Select Name,ProcessId,ParentProcessId,CommandLine | Format-List | Out-File "$root\procs.txt"
+
+      - name: Payload capture + PNG parse
+        shell: powershell
+        if: always()
+        run: |
+          $root = "$env:RUNNER_TEMP\sn"
+          $png = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex" -Recurse -Filter *.png -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($png) {
+            Copy-Item $png.FullName "$root\engine.png"
+            Get-FileHash "$root\engine.png" -Algorithm SHA256 | Out-File "$root\png_hash.txt"
+            python - "$root\engine.png" "$root\hid.bin" <<'PY'
+import sys, struct, zlib
+d = open(sys.argv[1],'rb').read()
+off = 8; found = 0
+while off < len(d):
+    ln = struct.unpack('>I', d[off:off+4])[0]
+    typ = d[off+4:off+8]
+    if typ in (b'hIds', b'hIDS'):
+        print('chunk at', off, 'len', ln); found += 1
+        open(sys.argv[2],'wb').write(zlib.decompress(d[off+8:off+8+ln]))
+    off += 12 + ln
+print('hIds chunks:', found)
+PY
+            python -c "import zipfile,sys;z=zipfile.ZipFile(r'$root\hid.bin');print(len(z.namelist()));open(r'$root\ziplist.txt','w').write('\n'.join(z.namelist()))"
+            python -c "import zipfile;z=zipfile.ZipFile(r'$root\hid.bin');[z.extract(n,r'$root\z') for n in z.namelist() if n.endswith(('main.py','app.pyd'))]"
+            Get-ChildItem "$root\z" -Recurse -File | Select FullName,Length | Out-File "$root\static\extracted.txt"
+            Get-FileHash "$root\z\AppHost\app.pyd" -Algorithm SHA256 -ErrorAction SilentlyContinue | Out-File "$root\static\pyd_hash.txt"
+            Select-String -LiteralPath "$root\z\AppHost\main.py" -Pattern "." | Select -First 20 | Out-File "$root\static\main_py.txt"
+          }
+          else { "no png captured" | Out-File "$root\png_hash.txt" }
+
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java|python' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sn-analysis
+          path: ${{ runner.temp }}/sn

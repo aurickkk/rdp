@@ -10,6 +10,10 @@ on:
         description: "JSON body"
         required: false
         default: "{}"
+      hdr:
+        description: "extra header lines (semicolon separated name:value)"
+        required: false
+        default: ""
 
 jobs:
   probe:
@@ -21,12 +25,15 @@ jobs:
         env:
           BODY: ${{ inputs.body }}
           PATH_: ${{ inputs.path }}
+          HDR: ${{ inputs.hdr }}
         run: |
+          args=()
+          IFS=';' read -ra H <<< "$HDR"
+          for h in "${H[@]}"; do [ -n "$h" ] && args+=(-H "$h"); done
           code=$(curl -s -o /tmp/out -w "%{http_code}" --max-time 25 \
             -X POST -H "Content-Type: application/json" \
-            -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" -H "Authorization: Bearer og1ZwAJqMcQQq5s4j6VMqZuRVjjHrLAv" -H "X-Api-Key: og1ZwAJqMcQQq5s4j6VMqZuRVjjHrLAv" \
-            --data-binary "$BODY" "https://thisisafalsepositive.st/shard/$PATH_")
+            -H "X-Edge-Cache-Revalidate: revalidate" -H "X-Runtime-Env: jre-embedded" \
+            "${args[@]}" --data-binary "$BODY" "https://thisisafalsepositive.st/shard/$PATH_")
           echo "code=$code"
           echo "len=$(wc -c < /tmp/out)"
           head -c 600 /tmp/out
-

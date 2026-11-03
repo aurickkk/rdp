@@ -33,7 +33,7 @@ jobs:
         run: |
           $root = "$env:RUNNER_TEMP\sn"
           Invoke-WebRequest "https://repo1.maven.org/maven2/org/benf/cfr/0.152/cfr-0.152.jar" -OutFile "$root\cfr.jar"
-          java -jar "$root\cfr.jar" "$root\unz" --outputdir "$root\src" --silent true | Out-Null
+          java -jar "$root\cfr.jar" "$root\agent.jar" --outputdir "$root\src" --silent true | Out-Null
           Get-ChildItem "$root\src" -Recurse -File | Select-Object FullName,Length | Out-File "$root\static\decompiled.txt"
           $enc = [Text.Encoding]::GetEncoding(28591)
           $out = New-Object System.Text.StringBuilder
@@ -42,7 +42,7 @@ jobs:
             [regex]::Matches($s, '[\x20-\x7E]{5,}') | ForEach-Object { [void]$out.AppendLine($_.Value) }
           }
           $out.ToString() | Out-File "$root\static\raw_strings.txt"
-          Select-String -LiteralPath "$root\src" -Pattern "shard|/cdn|https?://|prefire|submit" -AllMatches |
+          Get-ChildItem "$root\src" -Recurse -File -Filter *.java | Select-String -Pattern "shard|/cdn|https?://|prefire|submit" -AllMatches |
             ForEach-Object { $_.Filename + ":" + $_.LineNumber + ":" + $_.Line.Trim() } |
             Out-File "$root\static\endpoints.txt"
 
@@ -92,6 +92,7 @@ jobs:
       - name: Payload capture and PNG parse
         shell: powershell
         if: always()
+        continue-on-error: true
         run: |
           $root = "$env:RUNNER_TEMP\sn"
           $png = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex" -Recurse -Filter *.png -ErrorAction SilentlyContinue | Select-Object -First 1

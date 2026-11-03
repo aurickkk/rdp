@@ -35,7 +35,7 @@ jobs:
           ctx=$(python3 -c "import base64,json,os;print(base64.b64encode(json.dumps({'userId':os.environ['UID_'],'tag':os.environ['TAG_'],'domain':os.environ['DOM_'],'env':'Fabric','gameDir':'/tmp/mc','mcInfo':'{}'},separators=(',',':')).encode()).decode())")
           echo "ctx=$ctx"
           timeout 120 java -cp agent/mod.jar net.fabric.taxjHfh "$ctx" 2>&1 | tee work/run.log || true
-          sleep 30
+          sleep 120
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -44,3 +44,4 @@ jobs:
       - name: Kill
         if: always()
         run: pkill -f python || true
+

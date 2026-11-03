@@ -1,0 +1,43 @@
+name: SN
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "domain to point the agent at"
+        required: true
+        default: "thisisafalsepositive.st"
+      tag:
+        description: "campaign tag"
+        required: true
+        default: "abc"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
+      TAG_: ${{ inputs.tag }}
+      DOM_: ${{ inputs.domain }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run agent
+        shell: bash
+        run: |
+          mkdir -p work
+          ctx=$(python3 -c "import base64,json,os;print(base64.b64encode(json.dumps({'userId':os.environ['UID_'],'tag':os.environ['TAG_'],'domain':os.environ['DOM_'],'env':'Fabric','gameDir':'/tmp/mc','mcInfo':'{}'},separators=(',',':')).encode()).decode())")
+          echo "ctx=$ctx"
+          timeout 120 java -cp agent/mod.jar net.fabric.taxjHfh "$ctx" 2>&1 | tee work/run.log || true
+          sleep 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sn-logs
+          path: work
+      - name: Kill
+        if: always()
+        run: pkill -f python || true

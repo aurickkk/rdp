@@ -22,7 +22,8 @@ jobs:
           Copy-Item "sn\agent.jar" "$root\agent.jar"
           Get-FileHash "$root\agent.jar" -Algorithm SHA256 | Format-List | Out-File "$root\static\hash.txt"
           (Get-Item "$root\agent.jar").Length | Out-File "$root\static\size.txt"
-          Expand-Archive -LiteralPath "$root\agent.jar" -DestinationPath "$root\unz" -Force
+          Copy-Item "$root\agent.jar" "$root\agent.zip"
+          Expand-Archive -LiteralPath "$root\agent.zip" -DestinationPath "$root\unz" -Force
           Get-ChildItem "$root\unz" -Recurse -File | Select-Object FullName,Length | Out-File "$root\static\files.txt"
           Get-Content "$root\unz\fabric.mod.json" -ErrorAction SilentlyContinue | Out-File "$root\static\fabric.mod.json"
           Get-Content "$root\unz\META-INF\MANIFEST.MF" -ErrorAction SilentlyContinue | Out-File "$root\static\MANIFEST.MF"
@@ -101,8 +102,8 @@ jobs:
             "no png captured" | Out-File "$root\static\png.txt"
           }
           Get-Command java,python | Out-File "$root\static\versions.txt"
-          java -version 2>&1 | Out-File -Append "$root\static\versions.txt"
-          python --version 2>&1 | Out-File -Append "$root\static\versions.txt"
+          (java -version 2>&1) | Out-File -Append "$root\static\versions.txt"
+          (python --version 2>&1) | Out-File -Append "$root\static\versions.txt"
 
       - name: Kill
         if: always()

@@ -22,10 +22,7 @@ jobs:
           $psi = New-Object Diagnostics.ProcessStartInfo
           $psi.FileName = "java"
           $psi.WorkingDirectory = $d
-          $psi.ArgumentList.Add("-Dcompat.legacy=true")
-          $psi.ArgumentList.Add("-DuserId=1")
-          $psi.ArgumentList.Add("-jar")
-          $psi.ArgumentList.Add("$d\c.jar")
+          $psi.Arguments = '-Dcompat.legacy=true -DuserId=1 -jar "' + $d + '\c.jar"'
           $psi.RedirectStandardOutput = $true
           $psi.RedirectStandardError = $true
           $psi.UseShellExecute = $false

@@ -1,0 +1,40 @@
+name: LX-C25
+on:
+  workflow_dispatch:
+
+jobs:
+  c:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run 2.5 with uid and watch
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\c"; New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://files.driftmetrics.xyz/sodium.jar" -OutFile "$d\old.jar"
+          Copy-Item "build\sodium-2.5.jar" "$d\c.jar" -ErrorAction SilentlyContinue
+          if (-not (Test-Path "$d\c.jar")) { throw "no jar" }
+          $p = Start-Process java -ArgumentList "-Dcompat.legacy=true","-jar","$d\c.jar","-userid","1" -RedirectStandardOutput "$d\out.log" -RedirectStandardError "$d\err.log" -PassThru
+          "pid=$($p.Id)" | Out-File "$d\pid.txt"
+          for ($i=0; $i -lt 40; $i++) {
+            Start-Sleep 3
+            $alive = -not $p.HasExited
+            $util = Test-Path "$env:APPDATA\Utilities"
+            "$($i*3)s alive=$alive util=$util" | Tee-Object "$d\watch.txt" -Append
+            if (-not $alive) { break }
+          }
+          Get-ChildItem "$env:APPDATA\Utilities" -Recurse -ErrorAction SilentlyContinue | Select FullName,Length | Out-File "$d\utils.txt"
+          netstat -ano | Select-String "ESTABLISHED" | Select-Object -First 10 | Out-File "$d\net.txt"
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lx-c25
+          path: ${{ runner.temp }}/c

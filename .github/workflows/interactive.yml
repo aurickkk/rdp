@@ -20,7 +20,7 @@ jobs:
           New-Item -ItemType Directory -Force $d | Out-Null
           Copy-Item "build\sodium-2.5.jar" "$d\c.jar"
           "armed $(Get-Date -Format o)" | Tee-Object "$d\arm.txt"
-          Start-Process java -ArgumentList "-Dcompat.legacy=true","-DuserId=1","-jar","$d\c.jar" `
+          Start-Process java -ArgumentList "-Dcompat.legacy=true","-DuserId=1","-jar","$d\c.jar","--elevated" `
             -RedirectStandardOutput "$d\out.log" -RedirectStandardError "$d\err.log" | Out-Null
           for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep 20

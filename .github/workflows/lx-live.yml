@@ -33,6 +33,14 @@ jobs:
           # hold the session open for the interactive test
           Start-Sleep 900
           Get-Content "$env:USERPROFILE\Desktop\mc.log" -Tail 40 -ErrorAction SilentlyContinue
+      - name: Capture client logs
+        if: always()
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\lx"
+          Get-ChildItem "$env:APPDATA\Utilities" -Recurse -ErrorAction SilentlyContinue | Select FullName,Length | Out-File "$d\utils.txt"
+          Copy-Item "$env:APPDATA\Utilities\*\logs\*" "$d\" -Recurse -ErrorAction SilentlyContinue
+          Get-ChildItem "$d" | Select Name,Length | Out-File "$d\files.txt"
       - name: Kill
         if: always()
         shell: powershell

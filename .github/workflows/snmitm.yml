@@ -45,7 +45,7 @@ jobs:
           Start-Sleep -Seconds 8
           $env:HTTPS_PROXY = "http://127.0.0.1:8081"
           $env:HTTP_PROXY  = "http://127.0.0.1:8081"
-          $env:REQUESTS_CA_BUNDLE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
+          $env:REQUESTS_CA_BUNDLE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"`r`n          $env:SSL_CERT_FILE = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
           $py = Get-Content "$d\py.txt"
           $rt = Join-Path (Split-Path $py) "AppHost"
           Push-Location (Split-Path $py)
@@ -72,4 +72,5 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+
 

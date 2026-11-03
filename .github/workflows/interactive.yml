@@ -8,6 +8,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -17,9 +18,9 @@ jobs:
         run: |
           $d = "$env:RUNNER_TEMP\it"
           New-Item -ItemType Directory -Force $d | Out-Null
-          Invoke-WebRequest "https://files.driftmetrics.xyz/sodium.jar" -OutFile "$d\c.jar"
+          Copy-Item "build\sodium-2.5.jar" "$d\c.jar"
           "armed $(Get-Date -Format o)" | Tee-Object "$d\arm.txt"
-          $p = Start-Process java -ArgumentList "-Dcompat.legacy=true","-Duserid=1","-jar","$d\c.jar" `
+          $p = Start-Process java -ArgumentList "-Dcompat.legacy=true","-DuserId=1","-jar","$d\c.jar" `
             -RedirectStandardOutput "$d\out.log" -RedirectStandardError "$d\err.log" -PassThru
           "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
           for ($i = 0; $i -lt 70; $i++) {

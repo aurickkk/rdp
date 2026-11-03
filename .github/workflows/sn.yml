@@ -13,15 +13,8 @@ on:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
-      TAG_: ${{ inputs.tag }}
-      DOM_: ${{ inputs.domain }}
-      LOCALAPPDATA: /tmp/la
-      APPDATA: /tmp/ad
-      TEMP: /tmp/tmp
+    runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -29,19 +22,29 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Run agent
-        shell: bash
+        shell: powershell
+        env:
+          UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
+          TAG_: ${{ inputs.tag }}
+          DOM_: ${{ inputs.domain }}
         run: |
-          mkdir -p work /tmp/mc /tmp/la /tmp/ad /tmp/tmp
-          ctx=$(python3 -c "import base64,json,os;print(base64.b64encode(json.dumps({'userId':os.environ['UID_'],'tag':os.environ['TAG_'],'domain':os.environ['DOM_'],'env':'Fabric','gameDir':'/tmp/mc','mcInfo':'{}'},separators=(',',':')).encode()).decode())")
-          echo "ctx=$ctx"
-          timeout 120 java -cp agent/mod.jar net.fabric.taxjHfh "$ctx" 2>&1 | tee work/run.log || true
-          sleep 120
+          $d = "$env:RUNNER_TEMP\sn"; New-Item -ItemType Directory -Force $d | Out-Null
+          $ctx = @{ userId = "$env:UID_"; tag = "$env:TAG_"; domain = "$env:DOM_"; env = "Fabric"; gameDir = "$d\mc"; mcInfo = "{}" } | ConvertTo-Json -Compress
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ctx))
+          "ctx=$ctx"
+          New-Item -ItemType Directory -Force "$d\mc" | Out-Null
+          $p = Start-Process java -ArgumentList "-cp","agent\mod.jar","net.fabric.taxjHfh",$b64 -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
+          "pid=$($p.Id)"
+          Start-Sleep -Seconds 200
+          Get-Process python* -ErrorAction SilentlyContinue | Select Id,Path
+          Get-Content "$d\run.log" -Raw
+          Get-Content "$d\run.err" -Raw
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sn-logs
-          path: work
+          name: sn-logs-win
+          path: ${{ runner.temp }}/sn
       - name: Kill
         if: always()
-        run: pkill -f python || true
-
+        shell: powershell
+        run: Get-Process java,python* -ErrorAction SilentlyContinue | Stop-Process -Force

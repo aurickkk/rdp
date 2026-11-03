@@ -56,6 +56,13 @@ jobs:
           Start-Sleep -Seconds 2
           Get-Content "$d\stealer.log" -Tail 20
           Get-ChildItem "$d\flows.bin" | Select Length
+      - name: Dump flows
+        if: always()
+        shell: powershell
+        run: |
+          $d = "$env:RUNNER_TEMP\sn"
+          if (-not (Test-Path "$d\flows.bin")) { "no flows"; exit 0 }
+          python -c "from mitmproxy.io import FlowReader;f=open(r'$d\flows.bin','rb');[ (print(fl.request.method, fl.request.path), print(fl.request.get_text()[:3000])) for fl in FlowReader(f).stream() if 'shard' in fl.request.path]" 2>&1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -65,3 +72,4 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python*,mitmdump -ErrorAction SilentlyContinue | Stop-Process -Force
+

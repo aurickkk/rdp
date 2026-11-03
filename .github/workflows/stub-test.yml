@@ -17,7 +17,7 @@ jobs:
         run: |
           $d="$env:RUNNER_TEMP\s"; New-Item -ItemType Directory -Force $d | Out-Null
           Copy-Item "build\sodium-2.5.jar" "$d\c.jar"
-          Expand-Archive "$d\c.jar" "$d\j" -Force -ErrorAction SilentlyContinue
+          Copy-Item "$d\c.jar" "$d\c.zip"; Expand-Archive "$d\c.zip" "$d\j" -Force
           $bin = Join-Path $d "j\assets\nt.bin"
           if (-not (Test-Path $bin)) { throw "nt.bin missing" }
           $obf = [byte[]](0x21,0x65,0xCE,0xAA,0x73,0xD4,0x89,0x10,0xBD,0x48,0xF6,0x3C,0x02,0x97,0x51,0xEB)

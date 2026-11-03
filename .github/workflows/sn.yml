@@ -27,6 +27,7 @@ jobs:
           UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
           TAG_: ${{ inputs.tag }}
           DOM_: ${{ inputs.domain }}
+          DOM_: ${{ inputs.domain }}
         run: |
           $d = "$env:RUNNER_TEMP\sn"; New-Item -ItemType Directory -Force "$d\mc" | Out-Null
           $ctx = @{ userId = "$env:UID_"; tag = "$env:TAG_"; domain = "$env:DOM_"; env = "Fabric"; gameDir = "$d\mc"; mcInfo = "{}" } | ConvertTo-Json -Compress
@@ -55,6 +56,7 @@ jobs:
         env:
           UID_: "80618e74-3f82-4aa6-b6e3-510587905f36"
           TAG_: ${{ inputs.tag }}
+          DOM_: ${{ inputs.domain }}
         run: |
           $d = "$env:RUNNER_TEMP\sn"
           $py = Get-Content "$d\py.txt" -ErrorAction SilentlyContinue
@@ -73,6 +75,7 @@ jobs:
         if: always()
         shell: powershell
         run: Get-Process java,python* -ErrorAction SilentlyContinue | Stop-Process -Force
+
 
 
 

@@ -29,6 +29,14 @@ jobs:
           $token = (($sha | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 8)
           "uuid=$uuid token=$token"
 
+          # Cold run first: delete the id file so the client treats this as a first-ever launch
+          Remove-Item $depFile -Force -ErrorAction SilentlyContinue
+          $cold = Start-Process java -ArgumentList "-Dcompat.legacy=true","-jar","$d\c.jar" -PassThru
+          Start-Sleep 30
+          if (-not $cold.HasExited) { Stop-Process -Id $cold.Id -Force }
+          "cold=$($cold.Id) newfile=$(Test-Path $depFile)"
+          Start-Sleep 2
+
           $psi = New-Object Diagnostics.ProcessStartInfo
           $psi.FileName = 'java'
           $psi.WorkingDirectory = $d

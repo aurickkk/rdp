@@ -26,10 +26,21 @@ jobs:
           }
           # Cold run first: no id file, so the client takes the first-ever-launch path
           Remove-Item $depFile -Force -ErrorAction SilentlyContinue
-          $cold = Start-Process java -ArgumentList "-Dcompat.legacy=true","-jar","$d\c.jar" -PassThru
-          Start-Sleep 30
-          if (-not $cold.HasExited) { Stop-Process -Id $cold.Id -Force }
+          $cpsi = New-Object Diagnostics.ProcessStartInfo
+          $cpsi.FileName = 'java'
+          $cpsi.WorkingDirectory = $d
+          $cpsi.Arguments = '-Dcompat.legacy=true -jar "' + $d + '\c.jar"'
+          $cpsi.RedirectStandardOutput = $true
+          $cpsi.RedirectStandardError = $true
+          $cpsi.UseShellExecute = $false
+          $cold = [Diagnostics.Process]::Start($cpsi)
+          $coldOut = $cold.StandardOutput.ReadToEndAsync()
+          $null = $cold.StandardError.ReadToEndAsync()
+          Start-Sleep 45
+          if (-not $cold.HasExited) { $cold.Kill() }
           "cold=$($cold.Id) newfile=$(Test-Path $depFile)"
+          "--- cold stdout ---"
+          $coldOut.Result
           Start-Sleep 2
 
           $uuid = (Get-Content $depFile -Raw | ConvertFrom-Json).client_uuid
